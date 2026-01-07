@@ -1,0 +1,54 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\CristianFarias\\source\\repos\\ApiMercadoComunidad\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\source\\repos\\apimercadocomunidad\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\source\\repos\\apimercadocomunidad\\services\\publicacionservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:services\\publicacionservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\CristianFarias\\source\\repos\\ApiMercadoComunidad\\Program.cs",
+              "RelativeDocumentMoniker": "Program.cs",
+              "ToolTip": "C:\\Users\\CristianFarias\\source\\repos\\ApiMercadoComunidad\\Program.cs",
+              "RelativeToolTip": "Program.cs",
+              "ViewState": "AgIAABsAAAAAAAAAAAAIwCwAAAAEAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-06T22:35:13.302Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "PublicacionService.cs",
+              "DocumentMoniker": "C:\\Users\\CristianFarias\\source\\repos\\ApiMercadoComunidad\\Services\\PublicacionService.cs",
+              "RelativeDocumentMoniker": "Services\\PublicacionService.cs",
+              "ToolTip": "C:\\Users\\CristianFarias\\source\\repos\\ApiMercadoComunidad\\Services\\PublicacionService.cs",
+              "RelativeToolTip": "Services\\PublicacionService.cs",
+              "ViewState": "AgIAACMAAAAAAAAAAAAmwD4AAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-07T00:39:37.119Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
