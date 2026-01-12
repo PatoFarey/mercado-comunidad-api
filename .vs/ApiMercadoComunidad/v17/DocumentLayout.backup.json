@@ -3,24 +3,24 @@
   "WorkspaceRootPath": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\models\\communityproduct.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:models\\communityproduct.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\models\\products.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:models\\products.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\services\\communityproductservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:services\\communityproductservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\services\\userservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:services\\userservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\services\\productservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:services\\productservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\services\\iuserservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:services\\iuserservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\models\\dtos\\userdtos.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:models\\dtos\\userdtos.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|c:\\users\\cristianfarias\\documents\\github\\mercado-comunidad-api\\models\\user.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{89A9D698-48BF-4ED8-AD85-6592842F3947}|ApiMercadoComunidad.csproj|solutionrelative:models\\user.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -30,71 +30,68 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 1,
+          "SelectedChildIndex": 0,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "Products.cs",
-              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Models\\Products.cs",
-              "RelativeDocumentMoniker": "Models\\Products.cs",
-              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Models\\Products.cs",
-              "RelativeToolTip": "Models\\Products.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABoAAAA1AAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-11T17:08:06.348Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
               "DocumentIndex": 0,
-              "Title": "CommunityProduct.cs",
-              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Models\\CommunityProduct.cs",
-              "RelativeDocumentMoniker": "Models\\CommunityProduct.cs",
-              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Models\\CommunityProduct.cs \u2B24",
-              "RelativeToolTip": "Models\\CommunityProduct.cs \u2B24",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAFAAAAAAAAAA==",
+              "Title": "UserService.cs",
+              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Services\\UserService.cs",
+              "RelativeDocumentMoniker": "Services\\UserService.cs",
+              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Services\\UserService.cs",
+              "RelativeToolTip": "Services\\UserService.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAAGAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-11T16:52:39.618Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 3,
-              "Title": "Program.cs",
-              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Program.cs",
-              "RelativeDocumentMoniker": "Program.cs",
-              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Program.cs",
-              "RelativeToolTip": "Program.cs",
-              "ViewState": "AgIAABgAAAAAAAAAAAAAAHIAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-06T22:35:13.302Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 4,
-              "Title": "ProductService.cs",
-              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Services\\ProductService.cs",
-              "RelativeDocumentMoniker": "Services\\ProductService.cs",
-              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Services\\ProductService.cs",
-              "RelativeToolTip": "Services\\ProductService.cs",
-              "ViewState": "AgIAAAYAAAAAAAAAAAAAACkAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-11T16:41:19.814Z",
+              "WhenOpened": "2026-01-12T21:48:31.945Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 2,
-              "Title": "CommunityProductService.cs",
-              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Services\\CommunityProductService.cs",
-              "RelativeDocumentMoniker": "Services\\CommunityProductService.cs",
-              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Services\\CommunityProductService.cs",
-              "RelativeToolTip": "Services\\CommunityProductService.cs",
-              "ViewState": "AgIAAA0AAAAAAAAAAIA5wBcAAAAjAAAAAAAAAA==",
+              "Title": "IUserService.cs",
+              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Services\\IUserService.cs",
+              "RelativeDocumentMoniker": "Services\\IUserService.cs",
+              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Services\\IUserService.cs",
+              "RelativeToolTip": "Services\\IUserService.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA8AAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-11T15:33:28.842Z",
+              "WhenOpened": "2026-01-12T21:48:27.133Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "UserDTOs.cs",
+              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Models\\DTOs\\UserDTOs.cs",
+              "RelativeDocumentMoniker": "Models\\DTOs\\UserDTOs.cs",
+              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Models\\DTOs\\UserDTOs.cs",
+              "RelativeToolTip": "Models\\DTOs\\UserDTOs.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAADEAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-12T21:48:21.869Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "User.cs",
+              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Models\\User.cs",
+              "RelativeDocumentMoniker": "Models\\User.cs",
+              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Models\\User.cs",
+              "RelativeToolTip": "Models\\User.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAEQAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-12T21:48:14.096Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Program.cs",
+              "RelativeDocumentMoniker": "Program.cs",
+              "ToolTip": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\Program.cs",
+              "RelativeToolTip": "Program.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAD8AAAAKAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-06T22:35:13.302Z",
               "EditorCaption": ""
             }
           ]

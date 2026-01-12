@@ -1,5 +1,6 @@
 using ApiMercadoComunidad.Configuration;
 using ApiMercadoComunidad.Services;
+using ApiMercadoComunidad.Models.DTOs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,7 @@ builder.Services.Configure<MongoDbSettings>(
 builder.Services.AddSingleton<IProductService, ProductService>();
 builder.Services.AddSingleton<ICommunityService, CommunityService>();
 builder.Services.AddSingleton<ICommunityProductService, CommunityProductService>();
+builder.Services.AddSingleton<IUserService, UserService>();
 
 // Configurar CORS
 builder.Services.AddCors(options =>
@@ -107,6 +109,73 @@ app.MapGet("/community-products/product/{id}", async (string id, ICommunityProdu
 {
     var product = await service.GetByIdAsync(id);
     return product is not null ? Results.Ok(product) : Results.NotFound();
+});
+
+#endregion
+
+#region "users"
+
+app.MapPost("/auth/register", async (RegisterRequest request, IUserService service) =>
+{
+    if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+        return Results.BadRequest(new { message = "Email y contraseña son requeridos" });
+
+    var user = await service.RegisterAsync(request);
+    
+    if (user == null)
+        return Results.Conflict(new { message = "El email ya está registrado" });
+
+    return Results.Created($"/users/{user.Id}", user);
+});
+
+app.MapPost("/auth/login", async (LoginRequest request, IUserService service) =>
+{
+    if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+        return Results.BadRequest(new { message = "Email y contraseña son requeridos" });
+
+    var user = await service.LoginAsync(request);
+    
+    if (user == null)
+        return Results.Unauthorized();
+
+    return Results.Ok(user);
+});
+
+app.MapGet("/users/{id}", async (string id, IUserService service) =>
+{
+    var user = await service.GetByIdAsync(id);
+    return user is not null ? Results.Ok(user) : Results.NotFound();
+});
+
+app.MapGet("/users/email/{email}", async (string email, IUserService service) =>
+{
+    var user = await service.GetByEmailAsync(email);
+    return user is not null ? Results.Ok(user) : Results.NotFound();
+});
+
+app.MapPut("/users/{id}", async (string id, UpdateUserRequest request, IUserService service) =>
+{
+    var user = await service.UpdateUserAsync(id, request);
+    return user is not null ? Results.Ok(user) : Results.NotFound();
+});
+
+app.MapPost("/users/{id}/change-password", async (string id, ChangePasswordRequest request, IUserService service) =>
+{
+    if (string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
+        return Results.BadRequest(new { message = "Las contraseñas son requeridas" });
+
+    var success = await service.ChangePasswordAsync(id, request);
+    
+    if (!success)
+        return Results.BadRequest(new { message = "Contraseña actual incorrecta" });
+
+    return Results.Ok(new { message = "Contraseña actualizada correctamente" });
+});
+
+app.MapDelete("/users/{id}", async (string id, IUserService service) =>
+{
+    var success = await service.DeleteUserAsync(id);
+    return success ? Results.NoContent() : Results.NotFound();
 });
 
 #endregion

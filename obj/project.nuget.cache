@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "Sgd129aHZFo=",
+  "dgSpecHash": "LdmBtnznf/w=",
   "success": true,
   "projectFilePath": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\ApiMercadoComunidad.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\CristianFarias\\.nuget\\packages\\bcrypt.net-next\\4.0.3\\bcrypt.net-next.4.0.3.nupkg.sha512",
     "C:\\Users\\CristianFarias\\.nuget\\packages\\dnsclient\\1.6.1\\dnsclient.1.6.1.nupkg.sha512",
     "C:\\Users\\CristianFarias\\.nuget\\packages\\microsoft.extensions.apidescription.server\\8.0.0\\microsoft.extensions.apidescription.server.8.0.0.nupkg.sha512",
     "C:\\Users\\CristianFarias\\.nuget\\packages\\microsoft.openapi\\2.3.0\\microsoft.openapi.2.3.0.nupkg.sha512",
