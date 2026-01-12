@@ -5,7 +5,7 @@
     "version": "1.0"
   },
   "paths": {
-    "/publications": {
+    "/products": {
       "get": {
         "tags": [
           "ApiMercadoComunidad"
@@ -37,7 +37,7 @@
         }
       }
     },
-    "/publications/{id}": {
+    "/products/{id}": {
       "get": {
         "tags": [
           "ApiMercadoComunidad"
@@ -59,7 +59,7 @@
         }
       }
     },
-    "/publications/categoria/{categoria}": {
+    "/products/categoria/{categoria}": {
       "get": {
         "tags": [
           "ApiMercadoComunidad"
@@ -159,6 +159,98 @@
       "get": {
         "tags": [
           "ApiMercadoComunidad"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/community-products/{communityId}": {
+      "get": {
+        "tags": [
+          "ApiMercadoComunidad"
+        ],
+        "parameters": [
+          {
+            "name": "communityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/community-products/{communityId}/categoria/{categoria}": {
+      "get": {
+        "tags": [
+          "ApiMercadoComunidad"
+        ],
+        "parameters": [
+          {
+            "name": "communityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoria",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/community-products/product/{id}": {
+      "get": {
+        "tags": [
+          "ApiMercadoComunidad"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {

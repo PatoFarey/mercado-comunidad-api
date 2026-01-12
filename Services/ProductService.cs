@@ -5,24 +5,24 @@ using ApiMercadoComunidad.Models;
 
 namespace ApiMercadoComunidad.Services;
 
-public class PublicacionService : IPublicacionService
+public class ProductService : IProductService
 {
-    private readonly IMongoCollection<Publication> _publicacionsCollection;
+    private readonly IMongoCollection<Products> _publicacionsCollection;
 
-    public PublicacionService(IOptions<MongoDbSettings> mongoDbSettings)
+    public ProductService(IOptions<MongoDbSettings> mongoDbSettings)
     {
         var mongoClient = new MongoClient(mongoDbSettings.Value.ConnectionString);
         var mongoDatabase = mongoClient.GetDatabase(mongoDbSettings.Value.DatabaseName);
-        _publicacionsCollection = mongoDatabase.GetCollection<Publication>(
-            mongoDbSettings.Value.PublicacionsCollectionName);
+        _publicacionsCollection = mongoDatabase.GetCollection<Products>(
+            mongoDbSettings.Value.ProductsCollectionName);
     }
 
-    public async Task<List<Publication>> GetAllAsync() =>
+    public async Task<List<Products>> GetAllAsync() =>
         await _publicacionsCollection.Find(_ => true).ToListAsync();
 
-    public async Task<PaginatedResult<Publication>> GetPaginatedAsync(int pageNumber, int pageSize)
+    public async Task<PaginatedResult<Products>> GetPaginatedAsync(int pageNumber, int pageSize)
     {
-        var filter = Builders<Publication>.Filter.Empty;
+        var filter = Builders<Products>.Filter.Empty;
         var totalCount = await _publicacionsCollection.CountDocumentsAsync(filter);
 
         var data = await _publicacionsCollection
@@ -31,7 +31,7 @@ public class PublicacionService : IPublicacionService
             .Limit(pageSize)
             .ToListAsync();
 
-        return new PaginatedResult<Publication>
+        return new PaginatedResult<Products>
         {
             Data = data,
             TotalCount = (int)totalCount,
@@ -40,9 +40,9 @@ public class PublicacionService : IPublicacionService
         };
     }
 
-    public async Task<PaginatedResult<Publication>> GetByCategoriaAsync(string categoria, int pageNumber, int pageSize)
+    public async Task<PaginatedResult<Products>> GetByCategoriaAsync(string categoria, int pageNumber, int pageSize)
     {
-        var filter = Builders<Publication>.Filter.Eq(p => p.Categoria, categoria);
+        var filter = Builders<Products>.Filter.Eq(p => p.Categoria, categoria);
         var totalCount = await _publicacionsCollection.CountDocumentsAsync(filter);
 
         var data = await _publicacionsCollection
@@ -51,7 +51,7 @@ public class PublicacionService : IPublicacionService
             .Limit(pageSize)
             .ToListAsync();
 
-        return new PaginatedResult<Publication>
+        return new PaginatedResult<Products>
         {
             Data = data,
             TotalCount = (int)totalCount,
@@ -60,16 +60,16 @@ public class PublicacionService : IPublicacionService
         };
     }
 
-    public async Task<Publication?> GetByIdAsync(string id) =>
+    public async Task<Products?> GetByIdAsync(string id) =>
         await _publicacionsCollection.Find(p => p.Id == id).FirstOrDefaultAsync();
 
-    public async Task<Publication> CreateAsync(Publication publicacion)
+    public async Task<Products> CreateAsync(Products publicacion)
     {
         await _publicacionsCollection.InsertOneAsync(publicacion);
         return publicacion;
     }
 
-    public async Task UpdateAsync(string id, Publication publicacion) =>
+    public async Task UpdateAsync(string id, Products publicacion) =>
         await _publicacionsCollection.ReplaceOneAsync(p => p.Id == id, publicacion);
 
     public async Task DeleteAsync(string id) =>

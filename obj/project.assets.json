@@ -459,11 +459,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\CristianFarias\\source\\repos\\ApiMercadoComunidad\\ApiMercadoComunidad.csproj",
+      "projectUniqueName": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\ApiMercadoComunidad.csproj",
       "projectName": "ApiMercadoComunidad",
-      "projectPath": "C:\\Users\\CristianFarias\\source\\repos\\ApiMercadoComunidad\\ApiMercadoComunidad.csproj",
+      "projectPath": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\ApiMercadoComunidad.csproj",
       "packagesPath": "C:\\Users\\CristianFarias\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\CristianFarias\\source\\repos\\ApiMercadoComunidad\\obj\\",
+      "outputPath": "C:\\Users\\CristianFarias\\Documents\\GitHub\\mercado-comunidad-api\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

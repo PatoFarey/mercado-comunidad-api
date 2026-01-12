@@ -27,41 +27,20 @@ public class Community
     [BsonElement("email")]
     public string Email { get; set; } = string.Empty;
 
-    [BsonElement("users")]
-    public List<UserReference> Users { get; set; } = new();
-
     [BsonElement("open")]
     public bool Open { get; set; }
-
-    [BsonElement("stores")]
-    public List<StoreReference> Stores { get; set; } = new();
 
     [BsonElement("active")]
     public bool Active { get; set; }
 
-    [BsonElement("banner")]
-    public string Banner { get; set; } = string.Empty;
-
     [BsonElement("logo")]
     public string Logo { get; set; } = string.Empty;
+    [BsonElement("createdAt")]
+    [BsonIgnoreIfNull]
+    public DateTime? CreatedAt { get; set; }
+
+    [BsonElement("updatedAt")]
+    [BsonIgnoreIfNull]
+    public DateTime? UpdatedAt { get; set; }
 }
-
-public class StoreReference
-{
-    [BsonElement("storeId")]
-    [BsonRepresentation(BsonType.ObjectId)]
-    public string StoreId { get; set; } = string.Empty;
-
-    [BsonElement("status")]
-    public bool Status { get; set; }
-}
-
-public class UserReference
-{
-    [BsonElement("userID")]
-    [BsonRepresentation(BsonType.ObjectId)]
-    public string UserID { get; set; } = string.Empty;
-
-    [BsonElement("role")]
-    public string Role { get; set; } = string.Empty;
-}
+ 
