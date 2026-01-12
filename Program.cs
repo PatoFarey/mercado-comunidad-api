@@ -8,15 +8,16 @@ builder.Services.Configure<MongoDbSettings>(
     builder.Configuration.GetSection("MongoDbSettings"));
 
 // Registrar los servicios
-builder.Services.AddSingleton<IPublicacionService, PublicacionService>();
+builder.Services.AddSingleton<IProductService, ProductService>();
 builder.Services.AddSingleton<ICommunityService, CommunityService>();
+builder.Services.AddSingleton<ICommunityProductService, CommunityProductService>();
 
 // Configurar CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "http://localhost:3001", "https://mercadocomunidad.cl")
+        policy.WithOrigins("http://localhost:3000", "https://mercadocomunidad.cl")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -38,21 +39,21 @@ if (app.Environment.IsDevelopment())
 // Habilitar CORS
 app.UseCors("AllowFrontend");
 
-#region "publicacions"
+#region "products"
 
-app.MapGet("/publications", async (IPublicacionService service, int pageNumber = 1, int pageSize = 10) =>
+app.MapGet("/products", async (IProductService service, int pageNumber = 1, int pageSize = 10) =>
 {
     var result = await service.GetPaginatedAsync(pageNumber, pageSize);
     return Results.Ok(result);
 });
 
-app.MapGet("/publications/{id}", async (string id, IPublicacionService service) =>
+app.MapGet("/products/{id}", async (string id, IProductService service) =>
 {
-    var publicacion = await service.GetByIdAsync(id);
-    return publicacion is not null ? Results.Ok(publicacion) : Results.NotFound();
-});
+    var products = await service.GetByIdAsync(id);
+    return products is not null ? Results.Ok(products) : Results.NotFound();
+}); 
 
-app.MapGet("/publications/categoria/{categoria}", async (string categoria, IPublicacionService service, int pageNumber = 1, int pageSize = 10) =>
+app.MapGet("/products/categoria/{categoria}", async (string categoria, IProductService service, int pageNumber = 1, int pageSize = 10) =>
 {
     var result = await service.GetByCategoriaAsync(categoria, pageNumber, pageSize);
     return Results.Ok(result);
@@ -84,6 +85,28 @@ app.MapGet("/communities/active", async (ICommunityService service) =>
 {
     var communities = await service.GetActiveCommunitiesAsync();
     return Results.Ok(communities);
+});
+
+#endregion
+
+#region "community-products"
+
+app.MapGet("/community-products/{communityId}", async (string communityId, ICommunityProductService service, int pageNumber = 1, int pageSize = 10) =>
+{
+    var result = await service.GetByCommunityIdPaginatedAsync(communityId, pageNumber, pageSize);
+    return Results.Ok(result);
+});
+
+app.MapGet("/community-products/{communityId}/categoria/{categoria}", async (string communityId, string categoria, ICommunityProductService service) =>
+{
+    var products = await service.GetByCategoriaAsync(communityId, categoria);
+    return Results.Ok(products);
+});
+
+app.MapGet("/community-products/product/{id}", async (string id, ICommunityProductService service) =>
+{
+    var product = await service.GetByIdAsync(id);
+    return product is not null ? Results.Ok(product) : Results.NotFound();
 });
 
 #endregion

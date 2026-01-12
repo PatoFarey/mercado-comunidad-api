@@ -3,11 +3,13 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace ApiMercadoComunidad.Models;
 
-public class Publication
+public class Products
 {
     [BsonId]
     [BsonRepresentation(BsonType.ObjectId)]
     public string? Id { get; set; }
+
+    public string? IdStore { get; set; }
 
     [BsonElement("title")]
     public string Title { get; set; } = string.Empty;
