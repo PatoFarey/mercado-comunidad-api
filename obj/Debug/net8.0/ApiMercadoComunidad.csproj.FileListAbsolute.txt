@@ -83,3 +83,4 @@ C:\Users\CristianFarias\Documents\GitHub\mercado-comunidad-api\obj\Debug\net8.0\
 C:\Users\CristianFarias\Documents\GitHub\mercado-comunidad-api\obj\Debug\net8.0\ApiMercadoComunidad.pdb
 C:\Users\CristianFarias\Documents\GitHub\mercado-comunidad-api\obj\Debug\net8.0\ApiMercadoComunidad.genruntimeconfig.cache
 C:\Users\CristianFarias\Documents\GitHub\mercado-comunidad-api\obj\Debug\net8.0\ref\ApiMercadoComunidad.dll
+C:\Users\CristianFarias\Documents\GitHub\mercado-comunidad-api\bin\Debug\net8.0\BCrypt.Net-Next.dll
