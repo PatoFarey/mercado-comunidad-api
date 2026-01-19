@@ -9,7 +9,9 @@ public class Products
     [BsonRepresentation(BsonType.ObjectId)]
     public string? Id { get; set; }
 
-    public string? IdStore { get; set; }
+    [BsonElement("_id_store")]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string IdStore { get; set; } = string.Empty;
 
     [BsonElement("title")]
     public string Title { get; set; } = string.Empty;
@@ -26,24 +28,15 @@ public class Products
     [BsonElement("images")]
     public List<string> Images { get; set; } = new();
 
-    [BsonElement("phone")]
-    public string Phone { get; set; } = string.Empty;
+    [BsonElement("category")]
+    public string Category { get; set; } = string.Empty;
 
-    [BsonElement("storeName")]
-    public string StoreName { get; set; } = string.Empty;
+    [BsonElement("active")]
+    public bool Active { get; set; } = true;
 
-    [BsonElement("storeDNI")]
-    public string StoreDNI { get; set; } = string.Empty;
+    [BsonElement("createdAt")]
+    public DateTime CreatedAt { get; set; }
 
-    [BsonElement("storeLogo")]
-    public string StoreLogo { get; set; } = string.Empty;
-
-    [BsonElement("facebookLink")]
-    public string FacebookLink { get; set; } = string.Empty;
-
-    [BsonElement("instagramLink")]
-    public string InstagramLink { get; set; } = string.Empty;
-
-    [BsonElement("categoria")]
-    public string Categoria { get; set; } = string.Empty;
+    [BsonElement("updatedAt")]
+    public DateTime UpdatedAt { get; set; }
 }
