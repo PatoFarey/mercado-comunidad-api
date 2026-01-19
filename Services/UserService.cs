@@ -94,6 +94,19 @@ public class UserService : IUserService
         if (!string.IsNullOrEmpty(request.Name))
             updateDefinition = updateDefinition.Set(u => u.Name, request.Name);
 
+        if (!string.IsNullOrEmpty(request.Email))
+        {
+            // Verificar que el email no esté en uso por otro usuario
+            var existingUser = await _usersCollection
+                .Find(u => u.Email == request.Email.ToLower() && u.Id != id)
+                .FirstOrDefaultAsync();
+            
+            if (existingUser != null)
+                return null; // O lanzar excepción: throw new InvalidOperationException("El email ya está en uso");
+            
+            updateDefinition = updateDefinition.Set(u => u.Email, request.Email.ToLower());
+        }
+
         if (!string.IsNullOrEmpty(request.Avatar))
             updateDefinition = updateDefinition.Set(u => u.Avatar, request.Avatar);
 

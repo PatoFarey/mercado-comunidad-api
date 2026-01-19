@@ -9,3 +9,5 @@ appsettings.json
 /.vs
 appsettings.json
 /bin/Debug
+/bin
+/obj
