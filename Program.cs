@@ -413,6 +413,14 @@ app.MapDelete("/images/{id}", async (string id, IBlobStorageService service) =>
     return success ? Results.NoContent() : Results.NotFound();
 });
 
+app.MapDelete("/images/by-url", async (string blobUrl, string entityId, IBlobStorageService service) =>
+{
+    if (string.IsNullOrEmpty(blobUrl) || string.IsNullOrEmpty(entityId))
+        return Results.BadRequest(new { message = "blobUrl y entityId son requeridos" });
+
+    var success = await service.DeleteImageByUrlAsync(blobUrl, entityId);
+    return success ? Results.NoContent() : Results.NotFound();
+});
 #endregion
 
 #region "categories"
