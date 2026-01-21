@@ -27,7 +27,7 @@ public class BlobStorageService : IBlobStorageService
         _blobServiceClient = new BlobServiceClient(azureBlobSettings.Value.ConnectionString);
         _containerName = azureBlobSettings.Value.ContainerName;
         _containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        
+
         // Crear el contenedor si no existe
         _containerClient.CreateIfNotExists(PublicAccessType.Blob);
 
@@ -38,15 +38,15 @@ public class BlobStorageService : IBlobStorageService
         _usersCollection = mongoDatabase.GetCollection<User>("users");
         _storesCollection = mongoDatabase.GetCollection<Store>("stores");
         _communitiesCollection = mongoDatabase.GetCollection<Community>("communities");
-        
+
         // Inyectar ProductService
         _productService = productService;
     }
 
     public async Task<ImageUploadResponse> UploadImageAsync(
-        Stream fileStream, 
-        string fileName, 
-        string contentType, 
+        Stream fileStream,
+        string fileName,
+        string contentType,
         ImageUploadRequest request)
     {
         // Validar folder
@@ -86,7 +86,7 @@ public class BlobStorageService : IBlobStorageService
 
         // PASO 3: Subir a Azure Blob Storage
         var blobClient = _containerClient.GetBlobClient(blobName);
-        
+
         var blobHttpHeaders = new BlobHttpHeaders
         {
             ContentType = contentType
@@ -111,7 +111,7 @@ public class BlobStorageService : IBlobStorageService
             ContentType = contentType,
             FileSizeBytes = fileStream.Length,
             UploadedBy = request.UploadedBy,
-            CreatedAt = DateTime.UtcNow,    
+            CreatedAt = DateTime.UtcNow,
             IsActive = true
         };
 
@@ -216,6 +216,56 @@ public class BlobStorageService : IBlobStorageService
         return result.ModifiedCount > 0;
     }
 
+    // Agregar este método al final de la clase BlobStorageService
+
+    public async Task<bool> DeleteImageByUrlAsync(string blobUrl, string entityId)
+    {
+        // Buscar la imagen por URL y EntityId
+        var filter = Builders<ImageUpload>.Filter.And(
+            Builders<ImageUpload>.Filter.Eq(i => i.BlobUrl, blobUrl),
+            Builders<ImageUpload>.Filter.Eq(i => i.EntityId, entityId),
+            Builders<ImageUpload>.Filter.Eq(i => i.IsActive, true)
+        );
+
+        var image = await _imagesCollection
+            .Find(filter)
+            .FirstOrDefaultAsync();
+
+        if (image == null)
+            return false;
+
+        // Eliminar del Blob Storage
+        var blobName = $"{image.Folder}/{image.FileName}";
+        var blobClient = _containerClient.GetBlobClient(blobName);
+        await blobClient.DeleteIfExistsAsync();
+
+        // Si es una imagen de producto, también eliminarla del array
+        if (image.Folder == "product")
+        {
+            try
+            {
+                await _productService.RemoveImageAsync(image.EntityId, image.BlobUrl);
+            }
+            catch (InvalidOperationException)
+            {
+                // La imagen ya no existe en el producto, continuar con el soft delete
+            }
+        }
+
+        // Marcar como inactivo en MongoDB (soft delete)
+        //var update = Builders<ImageUpload>.Update.Set(i => i.IsActive, false);
+        //var result = await _imagesCollection.UpdateOneAsync(
+        //    i => i.Id == image.Id,
+        //    update
+        //);
+        //return result.ModifiedCount > 0;
+
+        // Eliminar de MongoDB (hard delete)
+        var result = await _imagesCollection.DeleteOneAsync(i => i.Id == image.Id);
+
+        return result.DeletedCount > 0;
+
+    }
     public async Task<string> GetImageUrlAsync(string blobName)
     {
         var blobClient = _containerClient.GetBlobClient(blobName);

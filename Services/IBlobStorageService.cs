@@ -9,5 +9,6 @@ public interface IBlobStorageService
     Task<List<ImageUpload>> GetImagesByEntityAsync(string folder, string entityId);
     Task<ImageUpload?> GetImageByIdAsync(string id);
     Task<bool> DeleteImageAsync(string id);
+    Task<bool> DeleteImageByUrlAsync(string blobUrl, string entityId);
     Task<string> GetImageUrlAsync(string blobName);
 }
