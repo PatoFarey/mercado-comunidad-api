@@ -20,6 +20,7 @@ builder.Services.AddSingleton<IUserService, UserService>();
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
 builder.Services.AddSingleton<IStoreService, StoreService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
+builder.Services.AddSingleton<IProductSynchronizeService, ProductSynchronizeService>();
 
 // Configurar CORS
 builder.Services.AddCors(options =>
@@ -482,8 +483,34 @@ app.MapDelete("/categories/{id}", async (string id, ICategoryService service) =>
 });
 
 #endregion
+
+#region "product-synchronize"
+
+app.MapPost("/products/{id}/synchronize", async (string id, IProductSynchronizeService service) =>
+{
+    var success = await service.SynchronizeProductAsync(id);
+    
+    if (!success)
+        return Results.NotFound(new { message = "Producto no encontrado o no tiene tienda/comunidad asociada" });
+
+    return Results.Ok(new { message = "Producto sincronizado correctamente", productId = id });
+});
+
+app.MapPost("/products/synchronize/all", async (IProductSynchronizeService service) =>
+{
+    var count = await service.SynchronizeAllProductsAsync();
+    return Results.Ok(new { message = $"Se sincronizaron {count} productos", totalSynchronized = count });
+});
+
+app.MapPost("/products/synchronize/store/{storeId}", async (string storeId, IProductSynchronizeService service) =>
+{
+    var count = await service.SynchronizeProductsByStoreAsync(storeId);
+    return Results.Ok(new { message = $"Se sincronizaron {count} productos de la tienda", totalSynchronized = count });
+});
+
+#endregion
+
 app.Run();
 
 // DTO adicional para agregar usuarios a tienda
 public record AddUserToStoreRequest(string UserId, string Role);
-    
