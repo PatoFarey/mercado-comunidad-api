@@ -39,4 +39,8 @@ public class Products
 
     [BsonElement("updatedAt")]
     public DateTime UpdatedAt { get; set; }
+
+    [BsonElement("synchronized")]
+    public bool Synchronized { get; set; } = true;
+     
 }

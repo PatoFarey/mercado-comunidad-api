@@ -10,10 +10,6 @@ namespace ApiMercadoComunidad.Models
         [BsonRepresentation(BsonType.ObjectId)]
         public string Id { get; set; } = string.Empty;
 
-        [BsonElement("communityId")]
-        [BsonRepresentation(BsonType.ObjectId)]
-        public string CommunityId { get; set; } = string.Empty;
-
         [BsonElement("productId")]
         [BsonRepresentation(BsonType.ObjectId)]
         public string ProductId { get; set; } = string.Empty;

@@ -9,13 +9,15 @@ namespace ApiMercadoComunidad.Services;
 public class ProductService : IProductService
 {
     private readonly IMongoCollection<Products> _productsCollection;
+    private readonly IProductSynchronizeService _synchronizeService;
 
-    public ProductService(IOptions<MongoDbSettings> mongoDbSettings)
+    public ProductService(IOptions<MongoDbSettings> mongoDbSettings, IProductSynchronizeService synchronizeService)
     {
         var mongoClient = new MongoClient(mongoDbSettings.Value.ConnectionString);
         var mongoDatabase = mongoClient.GetDatabase(mongoDbSettings.Value.DatabaseName);
         _productsCollection = mongoDatabase.GetCollection<Products>(
             mongoDbSettings.Value.ProductsCollectionName);
+        _synchronizeService = synchronizeService;
     }
 
     public async Task<PaginatedResult<ProductResponse>> GetPaginatedAsync(int pageNumber, int pageSize)
@@ -140,6 +142,10 @@ public class ProductService : IProductService
         };
 
         await _productsCollection.InsertOneAsync(product);
+
+        // Sincronizar automáticamente
+        await _synchronizeService.SynchronizeProductAsync(product.Id ?? string.Empty);
+
         return MapToProductResponse(product);
     }
 
@@ -176,6 +182,9 @@ public class ProductService : IProductService
 
         if (result.ModifiedCount == 0)
             return null;
+
+        // Sincronizar automáticamente después de actualizar
+        await _synchronizeService.SynchronizeProductAsync(id);
 
         return await GetByIdAsync(id);
     }
@@ -232,6 +241,9 @@ public class ProductService : IProductService
             .Set(p => p.UpdatedAt, DateTime.UtcNow);
 
         await _productsCollection.UpdateOneAsync(p => p.Id == id, update);
+
+        // Sincronizar para actualizar las imágenes en community_products
+        await _synchronizeService.SynchronizeProductAsync(id);
 
         return await GetByIdAsync(id);
     }
