@@ -1,9 +1,10 @@
-using Microsoft.Extensions.Options;
-using MongoDB.Driver;
-using BCrypt.Net;
 using ApiMercadoComunidad.Configuration;
 using ApiMercadoComunidad.Models;
 using ApiMercadoComunidad.Models.DTOs;
+using BCrypt.Net;
+using Microsoft.Extensions.Options;
+using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace ApiMercadoComunidad.Services;
 
@@ -61,7 +62,7 @@ public class UserService : IUserService
         var update = Builders<User>.Update
             .Set(u => u.LastLogin, DateTime.UtcNow)
             .Set(u => u.UpdatedAt, DateTime.UtcNow);
-        
+
         await _usersCollection.UpdateOneAsync(u => u.Id == user.Id, update);
         user.LastLogin = DateTime.UtcNow;
 
@@ -100,10 +101,10 @@ public class UserService : IUserService
             var existingUser = await _usersCollection
                 .Find(u => u.Email == request.Email.ToLower() && u.Id != id)
                 .FirstOrDefaultAsync();
-            
+
             if (existingUser != null)
                 return null; // O lanzar excepción: throw new InvalidOperationException("El email ya está en uso");
-            
+
             updateDefinition = updateDefinition.Set(u => u.Email, request.Email.ToLower());
         }
 
@@ -193,5 +194,27 @@ public class UserService : IUserService
             LastLogin = user.LastLogin,
             CreatedAt = user.CreatedAt
         };
+    }
+
+    public async Task<bool> VerifyEmailAsync(string userId)
+    {
+        try
+        {
+            if (!ObjectId.TryParse(userId, out _))
+                return false;
+
+            var filter = Builders<User>.Filter.Eq(u => u.Id, userId);
+            var update = Builders<User>.Update
+                .Set(u => u.EmailVerified, true)
+                .Set(u => u.UpdatedAt, DateTime.UtcNow);
+
+            var result = await _usersCollection.UpdateOneAsync(filter, update);
+
+            return result.ModifiedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            return false;
+        }
     }
 }

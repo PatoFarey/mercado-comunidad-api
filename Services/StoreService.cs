@@ -9,12 +9,16 @@ namespace ApiMercadoComunidad.Services;
 public class StoreService : IStoreService
 {
     private readonly IMongoCollection<Store> _storesCollection;
+    private readonly IMongoCollection<CommunityStore> _communityStoresCollection;
+    private readonly IProductSynchronizeService _synchronizeService;
 
-    public StoreService(IOptions<MongoDbSettings> mongoDbSettings)
+    public StoreService(IOptions<MongoDbSettings> mongoDbSettings, IProductSynchronizeService synchronizeService)
     {
         var mongoClient = new MongoClient(mongoDbSettings.Value.ConnectionString);
         var mongoDatabase = mongoClient.GetDatabase(mongoDbSettings.Value.DatabaseName);
         _storesCollection = mongoDatabase.GetCollection<Store>("stores");
+        _communityStoresCollection = mongoDatabase.GetCollection<CommunityStore>("community_stores");
+        _synchronizeService = synchronizeService;
     }
 
     public async Task<List<StoreResponse>> GetAllAsync()
@@ -155,6 +159,14 @@ public class StoreService : IStoreService
         if (result.ModifiedCount == 0)
             return null;
 
+        // Actualizar o insertar en community_stores
+        string idComunidadGlobal = "6821ef5213989f548f64d5b6";
+        await UpsertCommunityStoreAsync(idComunidadGlobal, id, request.IsGlobal.Value);
+
+
+        // Sincronizar automáticamente después de actualizar
+        await _synchronizeService.SynchronizeProductsByStoreAsync(id);
+
         return await GetByIdAsync(id);
     }
 
@@ -223,6 +235,45 @@ public class StoreService : IStoreService
         var count = await _storesCollection
             .CountDocumentsAsync(s => s.LinkStore == linkStore.ToLower());
         return count > 0;
+    }
+
+    private async Task UpsertCommunityStoreAsync(string communityId, string storeId, bool status)
+    {
+        var filter = Builders<CommunityStore>.Filter.And(
+            Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, communityId),
+            Builders<CommunityStore>.Filter.Eq(cs => cs.StoreId, storeId)
+        );
+
+        var existing = await _communityStoresCollection
+            .Find(filter)
+            .FirstOrDefaultAsync();
+
+        if (existing != null)
+        {
+            // Actualizar el status y updatedAt
+            var update = Builders<CommunityStore>.Update
+                .Set(cs => cs.Status, status)
+                .Set(cs => cs.UpdatedAt, DateTime.UtcNow);
+
+            await _communityStoresCollection.UpdateOneAsync(
+                cs => cs.Id == existing.Id,
+                update
+            );
+        }
+        else
+        {
+            // Insertar nuevo registro
+            var communityStore = new CommunityStore
+            {
+                CommunityId = communityId,
+                StoreId = storeId,
+                Status = status,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            await _communityStoresCollection.InsertOneAsync(communityStore);
+        }
     }
 
     private StoreResponse MapToStoreResponse(Store store)

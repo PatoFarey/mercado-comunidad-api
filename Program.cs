@@ -12,6 +12,11 @@ builder.Services.Configure<MongoDbSettings>(
 builder.Services.Configure<AzureBlobSettings>(
     builder.Configuration.GetSection("AzureBlobSettings"));
 
+// Configurar Email Settings
+builder.Services.Configure<EmailSettings>(
+    builder.Configuration.GetSection("EmailSettings"));
+ 
+
 // Registrar los servicios
 builder.Services.AddSingleton<IProductService, ProductService>();
 builder.Services.AddSingleton<ICommunityService, CommunityService>();
@@ -21,6 +26,8 @@ builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
 builder.Services.AddSingleton<IStoreService, StoreService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddSingleton<IProductSynchronizeService, ProductSynchronizeService>();
+builder.Services.AddSingleton<IEmailService, EmailService>();
+ 
 
 // Configurar CORS
 builder.Services.AddCors(options =>
@@ -206,15 +213,22 @@ app.MapGet("/community-products/product/{id}", async (string id, ICommunityProdu
 
 #region "users"
 
-app.MapPost("/auth/register", async (RegisterRequest request, IUserService service) =>
+app.MapPost("/auth/register", async (RegisterRequest request, IUserService service, IEmailService emailService) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
         return Results.BadRequest(new { message = "Email y contraseña son requeridos" });
 
     var user = await service.RegisterAsync(request);
-    
+
     if (user == null)
         return Results.Conflict(new { message = "El email ya está registrado" });
+
+    // Enviar correo de bienvenida (sin bloquear el response)
+    _ = Task.Run(async () =>
+    {
+        var userName = !string.IsNullOrEmpty(user.Name) ? user.Name : user.Email.Split('@')[0];
+        await emailService.SendWelcomeEmailAsync(user.Email, userName, user.Id);
+    });
 
     return Results.Created($"/users/{user.Id}", user);
 });
@@ -267,6 +281,19 @@ app.MapDelete("/users/{id}", async (string id, IUserService service) =>
 {
     var success = await service.DeleteUserAsync(id);
     return success ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapPost("/auth/verify-email/{userId}", async (string userId, IUserService service) =>
+{
+    if (string.IsNullOrEmpty(userId))
+        return Results.BadRequest(new { message = "UserId es requerido" });
+
+    var success = await service.VerifyEmailAsync(userId);
+
+    if (!success)
+        return Results.NotFound(new { message = "Usuario no encontrado o ya verificado" });
+
+    return Results.Ok(new { message = "Email verificado correctamente", emailVerified = true });
 });
 
 #endregion
