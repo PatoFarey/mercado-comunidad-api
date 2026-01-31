@@ -93,8 +93,8 @@ public class ProductService : IProductService
     public async Task<PaginatedResult<ProductResponse>> GetByStoreIdPaginatedAsync(string storeId, int pageNumber, int pageSize)
     {
         var filter = Builders<Products>.Filter.And(
-            Builders<Products>.Filter.Eq(p => p.IdStore, storeId),
-            Builders<Products>.Filter.Eq(p => p.Active, true)
+            Builders<Products>.Filter.Eq(p => p.IdStore, storeId)
+            //Builders<Products>.Filter.Eq(p => p.Active, true)
         );
 
         var totalCount = await _productsCollection.CountDocumentsAsync(filter);
