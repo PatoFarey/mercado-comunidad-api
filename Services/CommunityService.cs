@@ -28,6 +28,9 @@ public class CommunityService : ICommunityService
     public async Task<List<Community>> GetActiveCommunitiesAsync() =>
         await _communitiesCollection.Find(c => c.Active == true).ToListAsync();
 
+    public async Task<List<Community>> GetVisibleCommunitiesAsync() =>
+        await _communitiesCollection.Find(c => c.Visible== true).ToListAsync();
+
     public async Task<Community> CreateAsync(Community community)
     {
         await _communitiesCollection.InsertOneAsync(community);

@@ -51,6 +51,14 @@ public class EmailService : IEmailService
         return await SendEmailAsync(to, subject, htmlBody);
     }
 
+    public async Task<(bool success, string? errorMessage)> SendPasswordResetCodeAsync(string to, string userName, string resetCode)
+    {
+        var subject = "Recuperación de contraseña - Mercado Comunidad";
+        var htmlBody = GetPasswordResetEmailTemplate(userName, resetCode);
+
+        return await SendEmailAsync(to, subject, htmlBody);
+    }
+
     private string GetWelcomeEmailTemplate(string userName, string userId)
     {
         var verificationLink = $"https://mercadocomunidad.cl/verificarmail/{userId}";
@@ -95,6 +103,55 @@ public class EmailService : IEmailService
         
         <p style='font-size: 14px; color: #666;'>
             Si tienes alguna pregunta, no dudes en contactarnos.
+        </p>
+        
+        <hr style='border: none; border-top: 1px solid #ddd; margin: 30px 0;'>
+        
+        <p style='font-size: 12px; color: #999; text-align: center;'>
+            Mercado Comunidad<br>
+            contacto@mercadocomunidad.cl<br>
+            &copy; 2026 Todos los derechos reservados
+        </p>
+    </div>
+</body>
+</html>";
+    }
+
+    private string GetPasswordResetEmailTemplate(string userName, string resetCode)
+    {
+        return $@"
+<!DOCTYPE html>
+<html lang='es'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>Recuperación de Contraseña</title>
+</head>
+<body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>
+    <div style='background-color: #f8f9fa; padding: 30px; border-radius: 10px;'>
+        <h1 style='color: #dc3545; text-align: center;'>🔐 Recuperación de Contraseña</h1>
+        
+        <p style='font-size: 16px;'>Hola <strong>{userName}</strong>,</p>
+        
+        <p style='font-size: 16px;'>
+            Hemos recibido una solicitud para restablecer la contraseña de tu cuenta en Mercado Comunidad.
+        </p>
+        
+        <div style='background-color: #fff; border: 3px dashed #007bff; padding: 20px; border-radius: 10px; text-align: center; margin: 30px 0;'>
+            <p style='font-size: 14px; color: #666; margin-bottom: 10px;'>Tu código de verificación es:</p>
+            <h2 style='font-size: 48px; font-weight: bold; color: #007bff; letter-spacing: 8px; margin: 10px 0;'>{resetCode}</h2>
+            <p style='font-size: 12px; color: #999; margin-top: 10px;'>Este código expira en 30 minutos</p>
+        </div>
+        
+        <div style='background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;'>
+            <p style='margin: 0; font-size: 14px;'>
+                <strong>⚠️ Importante:</strong> Si no solicitaste restablecer tu contraseña, ignora este correo. 
+                Tu cuenta permanecerá segura.
+            </p>
+        </div>
+        
+        <p style='font-size: 14px; color: #666;'>
+            Para restablecer tu contraseña, ingresa este código en la página de recuperación junto con tu nueva contraseña.
         </p>
         
         <hr style='border: none; border-top: 1px solid #ddd; margin: 30px 0;'>

@@ -14,4 +14,7 @@ public interface IUserService
     Task<bool> DeleteUserAsync(string id);
     Task<bool> EmailExistsAsync(string email);
     Task<bool> VerifyEmailAsync(string userId);
+    Task<bool> RequestPasswordResetAsync(string email);
+    Task<bool> ValidateResetCodeAsync(string email, string code);
+    Task<bool> ResetPasswordAsync(string email, string code, string newPassword);
 }

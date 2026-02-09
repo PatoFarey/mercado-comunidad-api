@@ -187,6 +187,12 @@ app.MapGet("/communities/active", async (ICommunityService service) =>
     return Results.Ok(communities);
 });
 
+app.MapGet("/communities/visible", async (ICommunityService service) =>
+{
+    var communities = await service.GetVisibleCommunitiesAsync();
+    return Results.Ok(communities);
+});
+
 #endregion
 
 #region "community-products"
@@ -296,6 +302,53 @@ app.MapPost("/auth/verify-email/{userId}", async (string userId, IUserService se
     return Results.Ok(new { message = "Email verificado correctamente", emailVerified = true });
 });
 
+// NUEVOS ENDPOINTS PARA RECUPERACIÓN DE CONTRASEÑA
+
+app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest request, IUserService service) =>
+{
+    if (string.IsNullOrEmpty(request.Email))
+        return Results.BadRequest(new { message = "Email es requerido" });
+
+    var success = await service.RequestPasswordResetAsync(request.Email);
+    
+    // Por seguridad, siempre devuelve éxito aunque el email no exista
+    // Esto previene la enumeración de usuarios
+    return Results.Ok(new 
+    { 
+        message = "Si el email está registrado, recibirás un código de recuperación",
+        success = true 
+    });
+});
+
+app.MapPost("/auth/validate-reset-code", async (ValidateResetCodeRequest request, IUserService service) =>
+{
+    if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Code))
+        return Results.BadRequest(new { message = "Email y código son requeridos" });
+
+    var isValid = await service.ValidateResetCodeAsync(request.Email, request.Code);
+    
+    if (!isValid)
+        return Results.BadRequest(new { message = "Código inválido o expirado", valid = false });
+
+    return Results.Ok(new { message = "Código válido", valid = true });
+});
+
+app.MapPost("/auth/reset-password", async (ResetPasswordRequest request, IUserService service) =>
+{
+    if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Code) || string.IsNullOrEmpty(request.NewPassword))
+        return Results.BadRequest(new { message = "Email, código y nueva contraseña son requeridos" });
+
+    if (request.NewPassword.Length < 6)
+        return Results.BadRequest(new { message = "La contraseña debe tener al menos 6 caracteres" });
+
+    var success = await service.ResetPasswordAsync(request.Email, request.Code, request.NewPassword);
+    
+    if (!success)
+        return Results.BadRequest(new { message = "No se pudo restablecer la contraseña. Código inválido o expirado" });
+
+    return Results.Ok(new { message = "Contraseña restablecida correctamente", success = true });
+});
+ 
 #endregion
 
 #region "stores"

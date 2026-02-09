@@ -11,12 +11,19 @@ namespace ApiMercadoComunidad.Services;
 public class UserService : IUserService
 {
     private readonly IMongoCollection<User> _usersCollection;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<UserService> _logger;
 
-    public UserService(IOptions<MongoDbSettings> mongoDbSettings)
+    public UserService(
+        IOptions<MongoDbSettings> mongoDbSettings,
+        IEmailService emailService,
+        ILogger<UserService> logger)
     {
         var mongoClient = new MongoClient(mongoDbSettings.Value.ConnectionString);
         var mongoDatabase = mongoClient.GetDatabase(mongoDbSettings.Value.DatabaseName);
         _usersCollection = mongoDatabase.GetCollection<User>("users");
+        _emailService = emailService;
+        _logger = logger;
     }
 
     public async Task<UserResponse?> RegisterAsync(RegisterRequest request)
@@ -178,24 +185,6 @@ public class UserService : IUserService
         return count > 0;
     }
 
-    private UserResponse MapToUserResponse(User user)
-    {
-        return new UserResponse
-        {
-            Id = user.Id ?? string.Empty,
-            Name = user.Name,
-            Email = user.Email,
-            Avatar = user.Avatar,
-            Role = user.Role,
-            IsActive = user.IsActive,
-            EmailVerified = user.EmailVerified,
-            Phone = user.Phone,
-            Address = user.Address,
-            LastLogin = user.LastLogin,
-            CreatedAt = user.CreatedAt
-        };
-    }
-
     public async Task<bool> VerifyEmailAsync(string userId)
     {
         try
@@ -216,5 +205,130 @@ public class UserService : IUserService
         {
             return false;
         }
+    }
+
+    public async Task<bool> RequestPasswordResetAsync(string email)
+    {
+        try
+        {
+            var user = await _usersCollection
+                .Find(u => u.Email == email.ToLower() && u.IsActive)
+                .FirstOrDefaultAsync();
+
+            if (user == null)
+                return false;
+
+            // Generar código de 6 dígitos
+            var resetCode = new Random().Next(100000, 999999).ToString();
+            var expiryTime = DateTime.UtcNow.AddMinutes(30); // Válido por 30 minutos
+
+            var update = Builders<User>.Update
+                .Set(u => u.PasswordResetCode, resetCode)
+                .Set(u => u.PasswordResetExpiry, expiryTime)
+                .Set(u => u.UpdatedAt, DateTime.UtcNow);
+
+            await _usersCollection.UpdateOneAsync(u => u.Id == user.Id, update);
+
+            // Enviar correo con el código (sin bloquear)
+            _ = Task.Run(async () =>
+            {
+                await _emailService.SendPasswordResetCodeAsync(user.Email, user.Name, resetCode);
+            });
+
+            _logger.LogInformation("Código de recuperación generado para {Email}", email);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar código de recuperación para {Email}", email);
+            return false;
+        }
+    }
+
+    public async Task<bool> ValidateResetCodeAsync(string email, string code)
+    {
+        try
+        {
+            var user = await _usersCollection
+                .Find(u => u.Email == email.ToLower() && u.IsActive)
+                .FirstOrDefaultAsync();
+
+            if (user == null)
+                return false;
+
+            // Verificar que el código coincida y no haya expirado
+            if (user.PasswordResetCode != code || 
+                user.PasswordResetExpiry == null || 
+                user.PasswordResetExpiry < DateTime.UtcNow)
+            {
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al validar código de recuperación para {Email}", email);
+            return false;
+        }
+    }
+
+    public async Task<bool> ResetPasswordAsync(string email, string code, string newPassword)
+    {
+        try
+        {
+            var user = await _usersCollection
+                .Find(u => u.Email == email.ToLower() && u.IsActive)
+                .FirstOrDefaultAsync();
+
+            if (user == null)
+                return false;
+
+            // Verificar que el código coincida y no haya expirado
+            if (user.PasswordResetCode != code || 
+                user.PasswordResetExpiry == null || 
+                user.PasswordResetExpiry < DateTime.UtcNow)
+            {
+                return false;
+            }
+
+            // Hash de la nueva contraseña
+            var hashedPassword = BCrypt.Net.BCrypt.HashPassword(newPassword);
+
+            // Actualizar contraseña y limpiar código de recuperación
+            var update = Builders<User>.Update
+                .Set(u => u.Password, hashedPassword)
+                .Unset(u => u.PasswordResetCode)
+                .Unset(u => u.PasswordResetExpiry)
+                .Set(u => u.UpdatedAt, DateTime.UtcNow);
+
+            var result = await _usersCollection.UpdateOneAsync(u => u.Id == user.Id, update);
+
+            _logger.LogInformation("Contraseña restablecida exitosamente para {Email}", email);
+            return result.ModifiedCount > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al restablecer contraseña para {Email}", email);
+            return false;
+        }
+    }
+
+    private UserResponse MapToUserResponse(User user)
+    {
+        return new UserResponse
+        {
+            Id = user.Id ?? string.Empty,
+            Name = user.Name,
+            Email = user.Email,
+            Avatar = user.Avatar,
+            Role = user.Role,
+            IsActive = user.IsActive,
+            EmailVerified = user.EmailVerified,
+            Phone = user.Phone,
+            Address = user.Address,
+            LastLogin = user.LastLogin,
+            CreatedAt = user.CreatedAt
+        };
     }
 }
