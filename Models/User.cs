@@ -43,6 +43,14 @@ public class User
     [BsonIgnoreIfNull]
     public DateTime? LastLogin { get; set; }
 
+    [BsonElement("passwordResetCode")]
+    [BsonIgnoreIfNull]
+    public string? PasswordResetCode { get; set; }
+
+    [BsonElement("passwordResetExpiry")]
+    [BsonIgnoreIfNull]
+    public DateTime? PasswordResetExpiry { get; set; }
+
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; }
 

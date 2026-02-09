@@ -33,6 +33,9 @@ public class Community
     [BsonElement("active")]
     public bool Active { get; set; }
 
+    [BsonElement("visible")]
+    public bool Visible { get; set; }
+
     [BsonElement("logo")]
     public string Logo { get; set; } = string.Empty;
     [BsonElement("createdAt")]
