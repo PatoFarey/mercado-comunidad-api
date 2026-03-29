@@ -1,23 +1,37 @@
-using ApiMercadoComunidad.Configuration;
-using ApiMercadoComunidad.Services;
+Ôªøusing ApiMercadoComunidad.Configuration;
 using ApiMercadoComunidad.Models.DTOs;
+using ApiMercadoComunidad.Security;
+using ApiMercadoComunidad.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configurar MongoDB
 builder.Services.Configure<MongoDbSettings>(
     builder.Configuration.GetSection("MongoDbSettings"));
 
-// Configurar Azure Blob Storage
 builder.Services.Configure<AzureBlobSettings>(
     builder.Configuration.GetSection("AzureBlobSettings"));
 
-// Configurar Email Settings
 builder.Services.Configure<EmailSettings>(
     builder.Configuration.GetSection("EmailSettings"));
- 
 
-// Registrar los servicios
+builder.Services.Configure<JwtSettings>(
+    builder.Configuration.GetSection("Jwt"));
+
+var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()
+    ?? throw new InvalidOperationException("La secci√≥n Jwt es requerida.");
+
+if (string.IsNullOrWhiteSpace(jwtSettings.Key))
+    throw new InvalidOperationException("Jwt:Key es requerido.");
+
+if (string.IsNullOrWhiteSpace(jwtSettings.Issuer) || string.IsNullOrWhiteSpace(jwtSettings.Audience))
+    throw new InvalidOperationException("Jwt:Issuer y Jwt:Audience son requeridos.");
+
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key));
+
 builder.Services.AddSingleton<IProductService, ProductService>();
 builder.Services.AddSingleton<ICommunityService, CommunityService>();
 builder.Services.AddSingleton<ICommunityProductService, CommunityProductService>();
@@ -27,20 +41,41 @@ builder.Services.AddSingleton<IStoreService, StoreService>();
 builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddSingleton<IProductSynchronizeService, ProductSynchronizeService>();
 builder.Services.AddSingleton<IEmailService, EmailService>();
- 
+builder.Services.AddSingleton<ITokenService, TokenService>();
 
-// Configurar CORS
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ValidIssuer = jwtSettings.Issuer,
+            ValidAudience = jwtSettings.Audience,
+            IssuerSigningKey = signingKey,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://mercadocomunidad.cl")
+        policy.WithOrigins(
+                "http://localhost:3000",
+                "http://localhost:3001",
+                "http://localhost:5173",
+                "https://localhost:5173",
+                "https://mercadocomunidad.cl")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
 });
 
-// Agregar controladores si es necesario
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -53,10 +88,23 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Habilitar CORS
 app.UseCors("AllowFrontend");
+app.UseAuthentication();
+app.UseAuthorization();
 
-#region "products"
+bool IsAuthenticated(ClaimsPrincipal user) => user.Identity?.IsAuthenticated == true;
+
+IResult UnauthorizedResult() => Results.Unauthorized();
+
+bool CanAccessEmail(ClaimsPrincipal user, string email)
+{
+    var currentEmail = user.FindFirstValue(ClaimTypes.Email);
+    return AuthorizationHelpers.IsAdmin(user) ||
+           (!string.IsNullOrWhiteSpace(currentEmail) &&
+            string.Equals(currentEmail, email, StringComparison.OrdinalIgnoreCase));
+}
+
+#region Products
 
 app.MapGet("/products", async (IProductService service, int pageNumber = 1, int pageSize = 10) =>
 {
@@ -88,31 +136,53 @@ app.MapGet("/products/active/list", async (IProductService service) =>
     return Results.Ok(products);
 });
 
-app.MapPost("/products", async (CreateProductRequest request, IProductService service) =>
+app.MapPost("/products", async (CreateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
     if (string.IsNullOrEmpty(request.Title) || string.IsNullOrEmpty(request.IdStore))
         return Results.BadRequest(new { message = "Title y IdStore son requeridos" });
 
+    if (!await AuthorizationHelpers.CanManageStoreAsync(request.IdStore, user, storeService))
+        return Results.Forbid();
+
     var product = await service.CreateAsync(request);
     return Results.Created($"/products/{product.Id}", product);
-});
+}).RequireAuthorization();
 
-app.MapPut("/products/{id}", async (string id, UpdateProductRequest request, IProductService service) =>
+app.MapPut("/products/{id}", async (string id, UpdateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageProductAsync(id, user, service, storeService))
+        return Results.Forbid();
+
     var product = await service.UpdateAsync(id, request);
     return product is not null ? Results.Ok(product) : Results.NotFound();
-});
+}).RequireAuthorization();
 
-app.MapDelete("/products/{id}", async (string id, IProductService service) =>
+app.MapDelete("/products/{id}", async (string id, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageProductAsync(id, user, service, storeService))
+        return Results.Forbid();
+
     var success = await service.DeleteAsync(id);
     return success ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
 
-// NUEVOS ENDPOINTS PARA GESTI”N DE IM¡GENES
-
-app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, IProductService service) =>
+app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageProductAsync(id, user, service, storeService))
+        return Results.Forbid();
+
     if (string.IsNullOrEmpty(request.ImageUrl))
         return Results.BadRequest(new { message = "ImageUrl es requerida" });
 
@@ -125,10 +195,16 @@ app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, 
     {
         return Results.BadRequest(new { message = ex.Message });
     }
-});
+}).RequireAuthorization();
 
-app.MapDelete("/products/{id}/images", async (string id, string imageUrl, IProductService service) =>
+app.MapDelete("/products/{id}/images", async (string id, string imageUrl, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageProductAsync(id, user, service, storeService))
+        return Results.Forbid();
+
     if (string.IsNullOrEmpty(imageUrl))
         return Results.BadRequest(new { message = "imageUrl query parameter es requerido" });
 
@@ -141,12 +217,18 @@ app.MapDelete("/products/{id}/images", async (string id, string imageUrl, IProdu
     {
         return Results.BadRequest(new { message = ex.Message });
     }
-});
+}).RequireAuthorization();
 
-app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesRequest request, IProductService service) =>
+app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageProductAsync(id, user, service, storeService))
+        return Results.Forbid();
+
     if (request.Images == null || !request.Images.Any())
-        return Results.BadRequest(new { message = "Images es requerido y no puede estar vacÌo" });
+        return Results.BadRequest(new { message = "Images es requerido y no puede estar vac√≠o" });
 
     try
     {
@@ -157,11 +239,11 @@ app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesReque
     {
         return Results.BadRequest(new { message = ex.Message });
     }
-});
+}).RequireAuthorization();
 
 #endregion
 
-#region "communities"
+#region Communities
 
 app.MapGet("/communities", async (ICommunityService service) =>
 {
@@ -195,7 +277,7 @@ app.MapGet("/communities/visible", async (ICommunityService service) =>
 
 #endregion
 
-#region "community-products"
+#region Community Products
 
 app.MapGet("/community-products/{communityId}", async (string communityId, ICommunityProductService service, int pageNumber = 1, int pageSize = 10) =>
 {
@@ -217,77 +299,108 @@ app.MapGet("/community-products/product/{id}", async (string id, ICommunityProdu
 
 #endregion
 
-#region "users"
+#region Users
 
-app.MapPost("/auth/register", async (RegisterRequest request, IUserService service, IEmailService emailService) =>
+app.MapPost("/auth/register", async (RegisterRequest request, IUserService service, IEmailService emailService, ITokenService tokenService) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
-        return Results.BadRequest(new { message = "Email y contraseÒa son requeridos" });
+        return Results.BadRequest(new { message = "Email y contrase√±a son requeridos" });
 
     var user = await service.RegisterAsync(request);
 
     if (user == null)
-        return Results.Conflict(new { message = "El email ya est· registrado" });
+        return Results.Conflict(new { message = "El email ya est√° registrado" });
 
-    // Enviar correo de bienvenida (sin bloquear el response)
     _ = Task.Run(async () =>
     {
         var userName = !string.IsNullOrEmpty(user.Name) ? user.Name : user.Email.Split('@')[0];
         await emailService.SendWelcomeEmailAsync(user.Email, userName, user.Id);
     });
 
-    return Results.Created($"/users/{user.Id}", user);
+    var authResponse = tokenService.CreateAuthResponse(user);
+    return Results.Created($"/users/{user.Id}", authResponse);
 });
 
-app.MapPost("/auth/login", async (LoginRequest request, IUserService service) =>
+app.MapPost("/auth/login", async (LoginRequest request, IUserService service, ITokenService tokenService) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
-        return Results.BadRequest(new { message = "Email y contraseÒa son requeridos" });
+        return Results.BadRequest(new { message = "Email y contrase√±a son requeridos" });
 
     var user = await service.LoginAsync(request);
-    
+
     if (user == null)
         return Results.Unauthorized();
 
-    return Results.Ok(user);
+    var authResponse = tokenService.CreateAuthResponse(user);
+    return Results.Ok(authResponse);
 });
 
-app.MapGet("/users/{id}", async (string id, IUserService service) =>
+app.MapGet("/users/{id}", async (string id, ClaimsPrincipal user, IUserService service) =>
 {
-    var user = await service.GetByIdAsync(id);
-    return user is not null ? Results.Ok(user) : Results.NotFound();
-});
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
 
-app.MapGet("/users/email/{email}", async (string email, IUserService service) =>
-{
-    var user = await service.GetByEmailAsync(email);
-    return user is not null ? Results.Ok(user) : Results.NotFound();
-});
+    if (!AuthorizationHelpers.CanAccessUser(user, id))
+        return Results.Forbid();
 
-app.MapPut("/users/{id}", async (string id, UpdateUserRequest request, IUserService service) =>
-{
-    var user = await service.UpdateUserAsync(id, request);
-    return user is not null ? Results.Ok(user) : Results.NotFound();
-});
+    var result = await service.GetByIdAsync(id);
+    return result is not null ? Results.Ok(result) : Results.NotFound();
+}).RequireAuthorization();
 
-app.MapPost("/users/{id}/change-password", async (string id, ChangePasswordRequest request, IUserService service) =>
+app.MapGet("/users/email/{email}", async (string email, ClaimsPrincipal user, IUserService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!CanAccessEmail(user, email))
+        return Results.Forbid();
+
+    var result = await service.GetByEmailAsync(email);
+    return result is not null ? Results.Ok(result) : Results.NotFound();
+}).RequireAuthorization();
+
+app.MapPut("/users/{id}", async (string id, UpdateUserRequest request, ClaimsPrincipal user, IUserService service) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.CanAccessUser(user, id))
+        return Results.Forbid();
+
+    var result = await service.UpdateUserAsync(id, request);
+    return result is not null ? Results.Ok(result) : Results.NotFound();
+}).RequireAuthorization();
+
+app.MapPost("/users/{id}/change-password", async (string id, ChangePasswordRequest request, ClaimsPrincipal user, IUserService service) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.CanAccessUser(user, id))
+        return Results.Forbid();
+
     if (string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
-        return Results.BadRequest(new { message = "Las contraseÒas son requeridas" });
+        return Results.BadRequest(new { message = "Las contrase√±as son requeridas" });
 
     var success = await service.ChangePasswordAsync(id, request);
-    
+
     if (!success)
-        return Results.BadRequest(new { message = "ContraseÒa actual incorrecta" });
+        return Results.BadRequest(new { message = "Contrase√±a actual incorrecta" });
 
-    return Results.Ok(new { message = "ContraseÒa actualizada correctamente" });
-});
+    return Results.Ok(new { message = "Contrase√±a actualizada correctamente" });
+}).RequireAuthorization();
 
-app.MapDelete("/users/{id}", async (string id, IUserService service) =>
+app.MapDelete("/users/{id}", async (string id, ClaimsPrincipal user, IUserService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.CanAccessUser(user, id))
+        return Results.Forbid();
+
     var success = await service.DeleteUserAsync(id);
     return success ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
 
 app.MapPost("/auth/verify-email/{userId}", async (string userId, IUserService service) =>
 {
@@ -302,56 +415,52 @@ app.MapPost("/auth/verify-email/{userId}", async (string userId, IUserService se
     return Results.Ok(new { message = "Email verificado correctamente", emailVerified = true });
 });
 
-// NUEVOS ENDPOINTS PARA RECUPERACI”N DE CONTRASE—A
-
 app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest request, IUserService service) =>
 {
     if (string.IsNullOrEmpty(request.Email))
         return Results.BadRequest(new { message = "Email es requerido" });
 
-    var success = await service.RequestPasswordResetAsync(request.Email);
-    
-    // Por seguridad, siempre devuelve Èxito aunque el email no exista
-    // Esto previene la enumeraciÛn de usuarios
-    return Results.Ok(new 
-    { 
-        message = "Si el email est· registrado, recibir·s un cÛdigo de recuperaciÛn",
-        success = true 
+    await service.RequestPasswordResetAsync(request.Email);
+
+    return Results.Ok(new
+    {
+        message = "Si el email est√° registrado, recibir√°s un c√≥digo de recuperaci√≥n",
+        success = true
     });
 });
 
 app.MapPost("/auth/validate-reset-code", async (ValidateResetCodeRequest request, IUserService service) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Code))
-        return Results.BadRequest(new { message = "Email y cÛdigo son requeridos" });
+        return Results.BadRequest(new { message = "Email y c√≥digo son requeridos" });
 
     var isValid = await service.ValidateResetCodeAsync(request.Email, request.Code);
-    
-    if (!isValid)
-        return Results.BadRequest(new { message = "CÛdigo inv·lido o expirado", valid = false });
 
-    return Results.Ok(new { message = "CÛdigo v·lido", valid = true });
+    if (!isValid)
+        return Results.BadRequest(new { message = "C√≥digo inv√°lido o expirado", valid = false });
+
+    return Results.Ok(new { message = "C√≥digo v√°lido", valid = true });
 });
 
 app.MapPost("/auth/reset-password", async (ResetPasswordRequest request, IUserService service) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Code) || string.IsNullOrEmpty(request.NewPassword))
-        return Results.BadRequest(new { message = "Email, cÛdigo y nueva contraseÒa son requeridos" });
+        return Results.BadRequest(new { message = "Email, c√≥digo y nueva contrase√±a son requeridos" });
 
     if (request.NewPassword.Length < 6)
-        return Results.BadRequest(new { message = "La contraseÒa debe tener al menos 6 caracteres" });
+        return Results.BadRequest(new { message = "La contrase√±a debe tener al menos 6 caracteres" });
 
     var success = await service.ResetPasswordAsync(request.Email, request.Code, request.NewPassword);
-    
-    if (!success)
-        return Results.BadRequest(new { message = "No se pudo restablecer la contraseÒa. CÛdigo inv·lido o expirado" });
 
-    return Results.Ok(new { message = "ContraseÒa restablecida correctamente", success = true });
+    if (!success)
+        return Results.BadRequest(new { message = "No se pudo restablecer la contrase√±a. C√≥digo inv√°lido o expirado" });
+
+    return Results.Ok(new { message = "Contrase√±a restablecida correctamente", success = true });
 });
- 
+
 #endregion
 
-#region "stores"
+#region Stores
 
 app.MapGet("/stores", async (IStoreService service) =>
 {
@@ -371,11 +480,17 @@ app.MapGet("/stores/link/{linkStore}", async (string linkStore, IStoreService se
     return store is not null ? Results.Ok(store) : Results.NotFound();
 });
 
-app.MapGet("/stores/user/{userId}", async (string userId, IStoreService service) =>
+app.MapGet("/stores/user/{userId}", async (string userId, ClaimsPrincipal user, IStoreService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.CanAccessUser(user, userId))
+        return Results.Forbid();
+
     var stores = await service.GetByUserIdAsync(userId);
     return Results.Ok(stores);
-});
+}).RequireAuthorization();
 
 app.MapGet("/stores/active/list", async (IStoreService service) =>
 {
@@ -389,10 +504,15 @@ app.MapGet("/stores/global/list", async (IStoreService service) =>
     return Results.Ok(stores);
 });
 
-app.MapPost("/stores", async (CreateStoreRequest request, IStoreService service) =>
+app.MapPost("/stores", async (CreateStoreRequest request, ClaimsPrincipal user, IStoreService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
     if (string.IsNullOrEmpty(request.Name) || string.IsNullOrEmpty(request.LinkStore))
         return Results.BadRequest(new { message = "Name y LinkStore son requeridos" });
+
+    request.UserId = AuthorizationHelpers.GetCurrentUserId(user);
 
     try
     {
@@ -403,41 +523,68 @@ app.MapPost("/stores", async (CreateStoreRequest request, IStoreService service)
     {
         return Results.Conflict(new { message = ex.Message });
     }
-});
+}).RequireAuthorization();
 
-app.MapPut("/stores/{id}", async (string id, UpdateStoreRequest request, IStoreService service) =>
+app.MapPut("/stores/{id}", async (string id, UpdateStoreRequest request, ClaimsPrincipal user, IStoreService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageStoreAsync(id, user, service))
+        return Results.Forbid();
+
     var store = await service.UpdateAsync(id, request);
     return store is not null ? Results.Ok(store) : Results.NotFound();
-});
+}).RequireAuthorization();
 
-app.MapDelete("/stores/{id}", async (string id, IStoreService service) =>
+app.MapDelete("/stores/{id}", async (string id, ClaimsPrincipal user, IStoreService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageStoreAsync(id, user, service))
+        return Results.Forbid();
+
     var success = await service.DeleteAsync(id);
     return success ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
 
-app.MapPost("/stores/{storeId}/users", async (string storeId, AddUserToStoreRequest request, IStoreService service) =>
+app.MapPost("/stores/{storeId}/users", async (string storeId, AddUserToStoreRequest request, ClaimsPrincipal user, IStoreService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageStoreUsersAsync(storeId, user, service))
+        return Results.Forbid();
+
     if (string.IsNullOrEmpty(request.UserId) || string.IsNullOrEmpty(request.Role))
         return Results.BadRequest(new { message = "UserId y Role son requeridos" });
 
     var success = await service.AddUserToStoreAsync(storeId, request.UserId, request.Role);
     return success ? Results.Ok(new { message = "Usuario agregado a la tienda" }) : Results.BadRequest(new { message = "No se pudo agregar el usuario" });
-});
+}).RequireAuthorization();
 
-app.MapDelete("/stores/{storeId}/users/{userId}", async (string storeId, string userId, IStoreService service) =>
+app.MapDelete("/stores/{storeId}/users/{userId}", async (string storeId, string userId, ClaimsPrincipal user, IStoreService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageStoreUsersAsync(storeId, user, service))
+        return Results.Forbid();
+
     var success = await service.RemoveUserFromStoreAsync(storeId, userId);
     return success ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
 
 #endregion
 
-#region "blob-storage"
+#region Blob Storage
 
-app.MapPost("/images/upload", async (HttpRequest request, IBlobStorageService service) =>
+app.MapPost("/images/upload", async (HttpRequest request, ClaimsPrincipal user, IBlobStorageService service, IProductService productService, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
     if (!request.HasFormContentType)
         return Results.BadRequest(new { message = "El contenido debe ser multipart/form-data" });
 
@@ -445,21 +592,21 @@ app.MapPost("/images/upload", async (HttpRequest request, IBlobStorageService se
     var file = form.Files.GetFile("file");
     var folder = form["folder"].ToString();
     var entityId = form["entityId"].ToString();
-    var uploadedBy = form["uploadedBy"].ToString();
 
     if (file == null || file.Length == 0)
-        return Results.BadRequest(new { message = "No se ha enviado ning˙n archivo" });
+        return Results.BadRequest(new { message = "No se ha enviado ning√∫n archivo" });
 
     if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(entityId))
         return Results.BadRequest(new { message = "Folder y EntityId son requeridos" });
 
-    // Validar tipo de archivo (solo im·genes)
+    if (!await AuthorizationHelpers.CanManageImageAsync(folder, entityId, user, productService, storeService))
+        return Results.Forbid();
+
     var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
-    var fileExtension = Path.GetExtension(file.FileName).ToLower();
+    var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
     if (!allowedExtensions.Contains(fileExtension))
         return Results.BadRequest(new { message = "Solo se permiten archivos de imagen (jpg, jpeg, png, gif, webp)" });
 
-    // Validar tamaÒo (m·ximo 5MB)
     if (file.Length > 5 * 1024 * 1024)
         return Results.BadRequest(new { message = "El archivo no puede superar los 5MB" });
 
@@ -467,14 +614,14 @@ app.MapPost("/images/upload", async (HttpRequest request, IBlobStorageService se
     {
         Folder = folder,
         EntityId = entityId,
-        UploadedBy = string.IsNullOrEmpty(uploadedBy) ? null : uploadedBy
+        UploadedBy = AuthorizationHelpers.GetCurrentUserId(user)
     };
 
     using var stream = file.OpenReadStream();
     var result = await service.UploadImageAsync(stream, file.FileName, file.ContentType, uploadRequest);
 
     return Results.Created($"/images/{result.Id}", result);
-});
+}).RequireAuthorization();
 
 app.MapGet("/images/{folder}/{entityId}", async (string folder, string entityId, IBlobStorageService service) =>
 {
@@ -488,23 +635,50 @@ app.MapGet("/images/{id}", async (string id, IBlobStorageService service) =>
     return image is not null ? Results.Ok(image) : Results.NotFound();
 });
 
-app.MapDelete("/images/{id}", async (string id, IBlobStorageService service) =>
+app.MapDelete("/images/{id}", async (string id, ClaimsPrincipal user, IBlobStorageService service, IProductService productService, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    var image = await service.GetImageByIdAsync(id);
+    if (image == null)
+        return Results.NotFound();
+
+    if (!await AuthorizationHelpers.CanManageImageAsync(image, user, productService, storeService))
+        return Results.Forbid();
+
     var success = await service.DeleteImageAsync(id);
     return success ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
 
-app.MapDelete("/images/by-url", async (string blobUrl, string entityId, IBlobStorageService service) =>
+app.MapDelete("/images/by-url", async (string blobUrl, string entityId, ClaimsPrincipal user, IBlobStorageService service, IProductService productService, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
     if (string.IsNullOrEmpty(blobUrl) || string.IsNullOrEmpty(entityId))
         return Results.BadRequest(new { message = "blobUrl y entityId son requeridos" });
 
+    var image = (await service.GetImagesByEntityAsync("product", entityId))
+        .FirstOrDefault(i => string.Equals(i.BlobUrl, blobUrl, StringComparison.OrdinalIgnoreCase))
+        ?? (await service.GetImagesByEntityAsync("store", entityId))
+            .FirstOrDefault(i => string.Equals(i.BlobUrl, blobUrl, StringComparison.OrdinalIgnoreCase))
+        ?? (await service.GetImagesByEntityAsync("user", entityId))
+            .FirstOrDefault(i => string.Equals(i.BlobUrl, blobUrl, StringComparison.OrdinalIgnoreCase));
+
+    if (image == null)
+        return Results.NotFound();
+
+    if (!await AuthorizationHelpers.CanManageImageAsync(image, user, productService, storeService))
+        return Results.Forbid();
+
     var success = await service.DeleteImageByUrlAsync(blobUrl, entityId);
     return success ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
+
 #endregion
 
-#region "categories"
+#region Categories
 
 app.MapGet("/categories", async (ICategoryService service) =>
 {
@@ -524,8 +698,14 @@ app.MapGet("/categories/name/{name}", async (string name, ICategoryService servi
     return category is not null ? Results.Ok(category) : Results.NotFound();
 });
 
-app.MapPost("/categories", async (CreateCategoryRequest request, ICategoryService service) =>
+app.MapPost("/categories", async (CreateCategoryRequest request, ClaimsPrincipal user, ICategoryService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
     if (string.IsNullOrEmpty(request.Name))
         return Results.BadRequest(new { message = "Name es requerido" });
 
@@ -538,10 +718,16 @@ app.MapPost("/categories", async (CreateCategoryRequest request, ICategoryServic
     {
         return Results.Conflict(new { message = ex.Message });
     }
-});
+}).RequireAuthorization();
 
-app.MapPut("/categories/{id}", async (string id, UpdateCategoryRequest request, ICategoryService service) =>
+app.MapPut("/categories/{id}", async (string id, UpdateCategoryRequest request, ClaimsPrincipal user, ICategoryService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
     if (string.IsNullOrEmpty(request.Name))
         return Results.BadRequest(new { message = "Name es requerido" });
 
@@ -554,43 +740,66 @@ app.MapPut("/categories/{id}", async (string id, UpdateCategoryRequest request, 
     {
         return Results.Conflict(new { message = ex.Message });
     }
-});
+}).RequireAuthorization();
 
-app.MapDelete("/categories/{id}", async (string id, ICategoryService service) =>
+app.MapDelete("/categories/{id}", async (string id, ClaimsPrincipal user, ICategoryService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
     var success = await service.DeleteAsync(id);
     return success ? Results.NoContent() : Results.NotFound();
-});
+}).RequireAuthorization();
 
 #endregion
 
-#region "product-synchronize"
+#region Product Synchronize
 
-app.MapPost("/products/{id}/synchronize", async (string id, IProductSynchronizeService service) =>
+app.MapPost("/products/{id}/synchronize", async (string id, ClaimsPrincipal user, IProductSynchronizeService synchronizeService, IProductService productService, IStoreService storeService) =>
 {
-    var success = await service.SynchronizeProductAsync(id);
-    
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageProductAsync(id, user, productService, storeService))
+        return Results.Forbid();
+
+    var success = await synchronizeService.SynchronizeProductAsync(id);
+
     if (!success)
         return Results.NotFound(new { message = "Producto no encontrado o no tiene tienda/comunidad asociada" });
 
     return Results.Ok(new { message = "Producto sincronizado correctamente", productId = id });
-});
+}).RequireAuthorization();
 
-app.MapPost("/products/synchronize/all", async (IProductSynchronizeService service) =>
+app.MapPost("/products/synchronize/all", async (ClaimsPrincipal user, IProductSynchronizeService service) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
     var count = await service.SynchronizeAllProductsAsync();
     return Results.Ok(new { message = $"Se sincronizaron {count} productos", totalSynchronized = count });
-});
+}).RequireAuthorization();
 
-app.MapPost("/products/synchronize/store/{storeId}", async (string storeId, IProductSynchronizeService service) =>
+app.MapPost("/products/synchronize/store/{storeId}", async (string storeId, ClaimsPrincipal user, IProductSynchronizeService service, IStoreService storeService) =>
 {
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageStoreAsync(storeId, user, storeService))
+        return Results.Forbid();
+
     var count = await service.SynchronizeProductsByStoreAsync(storeId);
     return Results.Ok(new { message = $"Se sincronizaron {count} productos de la tienda", totalSynchronized = count });
-});
+}).RequireAuthorization();
 
 #endregion
 
 app.Run();
 
-// DTO adicional para agregar usuarios a tienda
 public record AddUserToStoreRequest(string UserId, string Role);
