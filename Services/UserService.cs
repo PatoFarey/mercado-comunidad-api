@@ -1,6 +1,7 @@
-using ApiMercadoComunidad.Configuration;
+ï»¿using ApiMercadoComunidad.Configuration;
 using ApiMercadoComunidad.Models;
 using ApiMercadoComunidad.Models.DTOs;
+using System.Security.Cryptography;
 using BCrypt.Net;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
@@ -32,7 +33,7 @@ public class UserService : IUserService
         if (await EmailExistsAsync(request.Email))
             return null;
 
-        // Hash de la contraseña
+        // Hash de la contraseÃ±a
         var hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
         var user = new User
@@ -61,11 +62,11 @@ public class UserService : IUserService
         if (user == null || !user.IsActive)
             return null;
 
-        // Verificar contraseña
+        // Verificar contraseÃ±a
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
             return null;
 
-        // Actualizar último login
+        // Actualizar Ãºltimo login
         var update = Builders<User>.Update
             .Set(u => u.LastLogin, DateTime.UtcNow)
             .Set(u => u.UpdatedAt, DateTime.UtcNow);
@@ -104,13 +105,13 @@ public class UserService : IUserService
 
         if (!string.IsNullOrEmpty(request.Email))
         {
-            // Verificar que el email no esté en uso por otro usuario
+            // Verificar que el email no estÃ© en uso por otro usuario
             var existingUser = await _usersCollection
                 .Find(u => u.Email == request.Email.ToLower() && u.Id != id)
                 .FirstOrDefaultAsync();
 
             if (existingUser != null)
-                return null; // O lanzar excepción: throw new InvalidOperationException("El email ya está en uso");
+                return null; // O lanzar excepciÃ³n: throw new InvalidOperationException("El email ya estÃ¡ en uso");
 
             updateDefinition = updateDefinition.Set(u => u.Email, request.Email.ToLower());
         }
@@ -144,11 +145,11 @@ public class UserService : IUserService
         if (user == null)
             return false;
 
-        // Verificar contraseña actual
+        // Verificar contraseÃ±a actual
         if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.Password))
             return false;
 
-        // Hash de la nueva contraseña
+        // Hash de la nueva contraseÃ±a
         var hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
 
         var update = Builders<User>.Update
@@ -218,9 +219,9 @@ public class UserService : IUserService
             if (user == null)
                 return false;
 
-            // Generar código de 6 dígitos
-            var resetCode = new Random().Next(100000, 999999).ToString();
-            var expiryTime = DateTime.UtcNow.AddMinutes(30); // Válido por 30 minutos
+            // Generar cÃ³digo de 6 dÃ­gitos
+            var resetCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            var expiryTime = DateTime.UtcNow.AddMinutes(30); // VÃ¡lido por 30 minutos
 
             var update = Builders<User>.Update
                 .Set(u => u.PasswordResetCode, resetCode)
@@ -229,18 +230,18 @@ public class UserService : IUserService
 
             await _usersCollection.UpdateOneAsync(u => u.Id == user.Id, update);
 
-            // Enviar correo con el código (sin bloquear)
+            // Enviar correo con el cÃ³digo (sin bloquear)
             _ = Task.Run(async () =>
             {
                 await _emailService.SendPasswordResetCodeAsync(user.Email, user.Name, resetCode);
             });
 
-            _logger.LogInformation("Código de recuperación generado para {Email}", email);
+            _logger.LogInformation("CÃ³digo de recuperaciÃ³n generado para {Email}", email);
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al generar código de recuperación para {Email}", email);
+            _logger.LogError(ex, "Error al generar cÃ³digo de recuperaciÃ³n para {Email}", email);
             return false;
         }
     }
@@ -256,7 +257,7 @@ public class UserService : IUserService
             if (user == null)
                 return false;
 
-            // Verificar que el código coincida y no haya expirado
+            // Verificar que el cÃ³digo coincida y no haya expirado
             if (user.PasswordResetCode != code || 
                 user.PasswordResetExpiry == null || 
                 user.PasswordResetExpiry < DateTime.UtcNow)
@@ -268,7 +269,7 @@ public class UserService : IUserService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al validar código de recuperación para {Email}", email);
+            _logger.LogError(ex, "Error al validar cÃ³digo de recuperaciÃ³n para {Email}", email);
             return false;
         }
     }
@@ -284,7 +285,7 @@ public class UserService : IUserService
             if (user == null)
                 return false;
 
-            // Verificar que el código coincida y no haya expirado
+            // Verificar que el cÃ³digo coincida y no haya expirado
             if (user.PasswordResetCode != code || 
                 user.PasswordResetExpiry == null || 
                 user.PasswordResetExpiry < DateTime.UtcNow)
@@ -292,10 +293,10 @@ public class UserService : IUserService
                 return false;
             }
 
-            // Hash de la nueva contraseña
+            // Hash de la nueva contraseÃ±a
             var hashedPassword = BCrypt.Net.BCrypt.HashPassword(newPassword);
 
-            // Actualizar contraseña y limpiar código de recuperación
+            // Actualizar contraseÃ±a y limpiar cÃ³digo de recuperaciÃ³n
             var update = Builders<User>.Update
                 .Set(u => u.Password, hashedPassword)
                 .Unset(u => u.PasswordResetCode)
@@ -304,12 +305,12 @@ public class UserService : IUserService
 
             var result = await _usersCollection.UpdateOneAsync(u => u.Id == user.Id, update);
 
-            _logger.LogInformation("Contraseña restablecida exitosamente para {Email}", email);
+            _logger.LogInformation("ContraseÃ±a restablecida exitosamente para {Email}", email);
             return result.ModifiedCount > 0;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al restablecer contraseña para {Email}", email);
+            _logger.LogError(ex, "Error al restablecer contraseÃ±a para {Email}", email);
             return false;
         }
     }
@@ -332,3 +333,4 @@ public class UserService : IUserService
         };
     }
 }
+
