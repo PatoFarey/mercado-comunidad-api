@@ -42,5 +42,8 @@ public class Products
 
     [BsonElement("synchronized")]
     public bool Synchronized { get; set; } = true;
+
+    [BsonElement("isNew")]
+    public bool IsNew { get; set; } = true;
      
 }

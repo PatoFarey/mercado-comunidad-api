@@ -95,6 +95,7 @@ public class StoreService : IStoreService
             Instagram = request.Instagram ?? string.Empty,
             Tiktok = request.Tiktok ?? string.Empty,
             Website = request.Website ?? string.Empty,
+            Description = request.Description ?? string.Empty,
             IsGlobal = request.IsGlobal,
             Active = true,
             CreatedAt = DateTime.UtcNow,
@@ -148,6 +149,9 @@ public class StoreService : IStoreService
         if (!string.IsNullOrEmpty(request.Website))
             updateDefinition = updateDefinition.Set(s => s.Website, request.Website);
 
+        if (request.Description != null)
+            updateDefinition = updateDefinition.Set(s => s.Description, request.Description);
+
         if (request.IsGlobal.HasValue)
             updateDefinition = updateDefinition.Set(s => s.IsGlobal, request.IsGlobal.Value);
 
@@ -164,7 +168,7 @@ public class StoreService : IStoreService
         await UpsertCommunityStoreAsync(idComunidadGlobal, id, request.IsGlobal.Value);
 
 
-        // Sincronizar automáticamente después de actualizar
+        // Sincronizar automï¿½ticamente despuï¿½s de actualizar
         await _synchronizeService.SynchronizeProductsByStoreAsync(id);
 
         return await GetByIdAsync(id);
@@ -290,6 +294,7 @@ public class StoreService : IStoreService
             Instagram = store.Instagram,
             Tiktok = store.Tiktok,
             Website = store.Website,
+            Description = store.Description,
             LinkStore = store.LinkStore,
             Users = store.Users,
             IsGlobal = store.IsGlobal,

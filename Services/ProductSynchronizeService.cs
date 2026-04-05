@@ -32,7 +32,7 @@ public class ProductSynchronizeService : IProductSynchronizeService
         if (product == null)
             return false;
 
-        // PASO 2: Obtener informaciÛn de la tienda
+        // PASO 2: Obtener informaci√≥n de la tienda
         var store = await _storesCollection
             .Find(s => s.Id == product.IdStore)
             .FirstOrDefaultAsync();
@@ -56,6 +56,7 @@ public class ProductSynchronizeService : IProductSynchronizeService
             Images = product.Images,
             Categoria = product.Category,
             Active = product.Active,
+            IsNew = product.IsNew,
 
             // Datos de la tienda
             StoreSlug = store.LinkStore,
@@ -106,7 +107,7 @@ public class ProductSynchronizeService : IProductSynchronizeService
 
     public async Task<int> SynchronizeAllProductsAsync()
     {
-        // Obtener todos los productos activos que NO est·n sincronizados
+        // Obtener todos los productos activos que NO est√°n sincronizados
         var filter = Builders<Products>.Filter.And(
             Builders<Products>.Filter.Eq(p => p.Active, true),
             Builders<Products>.Filter.Eq(p => p.Synchronized, false)

@@ -1,6 +1,7 @@
 ﻿using ApiMercadoComunidad.Configuration;
 using ApiMercadoComunidad.Models;
 using ApiMercadoComunidad.Models.DTOs;
+using ApiMercadoComunidad.Security;
 using System.Security.Cryptography;
 using BCrypt.Net;
 using Microsoft.Extensions.Options;
@@ -12,17 +13,25 @@ namespace ApiMercadoComunidad.Services;
 public class UserService : IUserService
 {
     private readonly IMongoCollection<User> _usersCollection;
+    private readonly IPlanService _planService;
     private readonly IEmailService _emailService;
     private readonly ILogger<UserService> _logger;
+    private readonly Dictionary<string, List<DateTime>> _emailVerificationResendAttempts = new();
+    private readonly object _emailVerificationResendLock = new();
+    private static readonly TimeSpan EmailVerificationResendCooldown = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan EmailVerificationResendWindow = TimeSpan.FromHours(1);
+    private const int EmailVerificationResendMaxPerWindow = 5;
 
     public UserService(
         IOptions<MongoDbSettings> mongoDbSettings,
+        IPlanService planService,
         IEmailService emailService,
         ILogger<UserService> logger)
     {
         var mongoClient = new MongoClient(mongoDbSettings.Value.ConnectionString);
         var mongoDatabase = mongoClient.GetDatabase(mongoDbSettings.Value.DatabaseName);
         _usersCollection = mongoDatabase.GetCollection<User>("users");
+        _planService = planService;
         _emailService = emailService;
         _logger = logger;
     }
@@ -36,21 +45,34 @@ public class UserService : IUserService
         // Hash de la contraseña
         var hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
+        var requestedRole = (request.Role ?? string.Empty).Trim().ToLowerInvariant();
+        var allowedRoles = new[] { UserRoles.Buyer, UserRoles.Seller, UserRoles.CommunityAdmin };
+        var role = allowedRoles.Contains(requestedRole)
+            ? requestedRole
+            : UserRoles.Buyer;
+
         var user = new User
         {
             Name = request.Name,
             Email = request.Email.ToLower(),
             Password = hashedPassword,
             Phone = request.Phone ?? string.Empty,
-            Role = "user",
+            Role = role,
             IsActive = true,
             EmailVerified = false,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
 
+        if (string.Equals(role, UserRoles.Seller, StringComparison.OrdinalIgnoreCase))
+        {
+            var defaultSellerPlan = await _planService.GetDefaultSellerPlanAsync();
+            if (!string.IsNullOrWhiteSpace(defaultSellerPlan?.Id))
+                user.PlanId = defaultSellerPlan.Id;
+        }
+
         await _usersCollection.InsertOneAsync(user);
-        return MapToUserResponse(user);
+        return await MapToUserResponseAsync(user);
     }
 
     public async Task<UserResponse?> LoginAsync(LoginRequest request)
@@ -66,6 +88,9 @@ public class UserService : IUserService
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
             return null;
 
+        if (!user.EmailVerified)
+            throw new InvalidOperationException("No ha verificado su correo");
+
         // Actualizar último login
         var update = Builders<User>.Update
             .Set(u => u.LastLogin, DateTime.UtcNow)
@@ -74,7 +99,7 @@ public class UserService : IUserService
         await _usersCollection.UpdateOneAsync(u => u.Id == user.Id, update);
         user.LastLogin = DateTime.UtcNow;
 
-        return MapToUserResponse(user);
+        return await MapToUserResponseAsync(user);
     }
 
     public async Task<UserResponse?> GetByIdAsync(string id)
@@ -83,7 +108,7 @@ public class UserService : IUserService
             .Find(u => u.Id == id && u.IsActive)
             .FirstOrDefaultAsync();
 
-        return user != null ? MapToUserResponse(user) : null;
+        return user != null ? await MapToUserResponseAsync(user) : null;
     }
 
     public async Task<UserResponse?> GetByEmailAsync(string email)
@@ -92,7 +117,7 @@ public class UserService : IUserService
             .Find(u => u.Email == email.ToLower() && u.IsActive)
             .FirstOrDefaultAsync();
 
-        return user != null ? MapToUserResponse(user) : null;
+        return user != null ? await MapToUserResponseAsync(user) : null;
     }
 
     public async Task<UserResponse?> UpdateUserAsync(string id, UpdateUserRequest request)
@@ -208,6 +233,84 @@ public class UserService : IUserService
         }
     }
 
+    public async Task<bool> RequestEmailVerificationAsync(string email)
+    {
+        try
+        {
+            var normalizedEmail = email.Trim().ToLowerInvariant();
+            if (!TryRegisterEmailVerificationResendAttempt(normalizedEmail, out var retryAfterSeconds))
+            {
+                throw new InvalidOperationException(
+                    $"Has solicitado demasiados reenvíos. Intenta nuevamente en {retryAfterSeconds} segundos.");
+            }
+
+            var user = await _usersCollection
+                .Find(u => u.Email == normalizedEmail && u.IsActive)
+                .FirstOrDefaultAsync();
+
+            if (user == null || user.EmailVerified || string.IsNullOrWhiteSpace(user.Id))
+                return true;
+
+            var userName = !string.IsNullOrWhiteSpace(user.Name)
+                ? user.Name
+                : user.Email.Split('@')[0];
+
+            _ = Task.Run(async () =>
+            {
+                await _emailService.SendWelcomeEmailAsync(user.Email, userName, user.Id);
+            });
+
+            _logger.LogInformation("Reenvío de verificación solicitado para {Email}", email);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al reenviar verificación para {Email}", email);
+            return false;
+        }
+    }
+
+    private bool TryRegisterEmailVerificationResendAttempt(string email, out int retryAfterSeconds)
+    {
+        var now = DateTime.UtcNow;
+        retryAfterSeconds = 0;
+
+        lock (_emailVerificationResendLock)
+        {
+            if (!_emailVerificationResendAttempts.TryGetValue(email, out var attempts))
+            {
+                attempts = new List<DateTime>();
+                _emailVerificationResendAttempts[email] = attempts;
+            }
+
+            attempts.RemoveAll(a => now - a > EmailVerificationResendWindow);
+
+            if (attempts.Count > 0)
+            {
+                var sinceLastAttempt = now - attempts[^1];
+                if (sinceLastAttempt < EmailVerificationResendCooldown)
+                {
+                    retryAfterSeconds = (int)Math.Ceiling((EmailVerificationResendCooldown - sinceLastAttempt).TotalSeconds);
+                    return false;
+                }
+            }
+
+            if (attempts.Count >= EmailVerificationResendMaxPerWindow)
+            {
+                var oldestAttempt = attempts[0];
+                retryAfterSeconds = (int)Math.Ceiling((EmailVerificationResendWindow - (now - oldestAttempt)).TotalSeconds);
+                return false;
+            }
+
+            attempts.Add(now);
+            return true;
+        }
+    }
+
     public async Task<bool> RequestPasswordResetAsync(string email)
     {
         try
@@ -315,8 +418,44 @@ public class UserService : IUserService
         }
     }
 
-    private UserResponse MapToUserResponse(User user)
+    public async Task<bool> UpdateRoleAsync(string id, string role)
     {
+        if (!UserRoles.All.Contains(role))
+            return false;
+
+        var update = Builders<User>.Update
+            .Set(u => u.Role, role)
+            .Set(u => u.UpdatedAt, DateTime.UtcNow);
+
+        var result = await _usersCollection.UpdateOneAsync(
+            u => u.Id == id && u.IsActive,
+            update
+        );
+
+        return result.ModifiedCount > 0;
+    }
+
+    public async Task<List<UserResponse>> GetAllAsync()
+    {
+        var users = await _usersCollection
+            .Find(u => u.IsActive)
+            .SortBy(u => u.Name)
+            .ToListAsync();
+
+        var responses = await Task.WhenAll(users.Select(MapToUserResponseAsync));
+        return responses.ToList();
+    }
+
+    private async Task<UserResponse> MapToUserResponseAsync(User user)
+    {
+        Plan? plan = null;
+        if (!string.IsNullOrWhiteSpace(user.Id))
+        {
+            plan = string.Equals(user.Role, UserRoles.CommunityAdmin, StringComparison.OrdinalIgnoreCase)
+                ? await _planService.GetEffectivePlanForCommunityAdminAsync(user.Id)
+                : await _planService.GetEffectivePlanForUserAsync(user.Id);
+        }
+
         return new UserResponse
         {
             Id = user.Id ?? string.Empty,
@@ -329,7 +468,41 @@ public class UserService : IUserService
             Phone = user.Phone,
             Address = user.Address,
             LastLogin = user.LastLogin,
-            CreatedAt = user.CreatedAt
+            CreatedAt = user.CreatedAt,
+            PlanId = user.PlanId,
+            Plan = MapToPlanSummary(plan)
+        };
+    }
+
+    private static PlanSummaryResponse? MapToPlanSummary(Plan? plan)
+    {
+        if (plan == null)
+            return null;
+
+        var storesLimit = plan.Limits.Stores > 0
+            ? plan.Limits.Stores
+            : plan.Tier.Equals("free", StringComparison.OrdinalIgnoreCase) ? 1
+            : plan.Tier.Equals("pro", StringComparison.OrdinalIgnoreCase) ? 3
+            : -1;
+
+        return new PlanSummaryResponse
+        {
+            Id = plan.Id ?? string.Empty,
+            Code = plan.Code,
+            Name = plan.Name,
+            Type = plan.Type,
+            Tier = plan.Tier,
+            Active = plan.Active,
+            Limits = new PlanLimitsResponse
+            {
+                Stores = storesLimit,
+                Products = plan.Limits.Products == 0 ? -1 : plan.Limits.Products,
+                ImagesPerProduct = plan.Limits.ImagesPerProduct == 0 ? -1 : plan.Limits.ImagesPerProduct,
+                VideoPerProduct = plan.Limits.VideoPerProduct,
+                CommunitiesJoin = plan.Limits.CommunitiesJoin == 0 ? -1 : plan.Limits.CommunitiesJoin,
+                CommunitiesCreate = plan.Limits.CommunitiesCreate == 0 ? -1 : plan.Limits.CommunitiesCreate,
+                SellersPerCommunity = plan.Limits.SellersPerCommunity == 0 ? -1 : plan.Limits.SellersPerCommunity,
+            }
         };
     }
 }

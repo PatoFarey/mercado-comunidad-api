@@ -14,7 +14,10 @@ public interface IUserService
     Task<bool> DeleteUserAsync(string id);
     Task<bool> EmailExistsAsync(string email);
     Task<bool> VerifyEmailAsync(string userId);
+    Task<bool> RequestEmailVerificationAsync(string email);
     Task<bool> RequestPasswordResetAsync(string email);
     Task<bool> ValidateResetCodeAsync(string email, string code);
     Task<bool> ResetPasswordAsync(string email, string code, string newPassword);
+    Task<bool> UpdateRoleAsync(string id, string role);
+    Task<List<UserResponse>> GetAllAsync();
 }

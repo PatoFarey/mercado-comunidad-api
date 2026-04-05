@@ -25,6 +25,11 @@ public class User
     [BsonElement("role")]
     public string Role { get; set; } = "user";
 
+    [BsonElement("plan_id")]
+    [BsonRepresentation(BsonType.ObjectId)]
+    [BsonIgnoreIfNull]
+    public string? PlanId { get; set; }
+
     [BsonElement("isActive")]
     public bool IsActive { get; set; } = true;
 

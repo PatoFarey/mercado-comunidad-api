@@ -1,4 +1,4 @@
-﻿using MongoDB.Bson;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 
@@ -66,6 +66,9 @@ namespace ApiMercadoComunidad.Models
 
         [BsonElement("longDescription")]
         public string LongDescription { get; set; } = string.Empty;
+
+        [BsonElement("isNew")]
+        public bool IsNew { get; set; } = true;
 
     }
 }

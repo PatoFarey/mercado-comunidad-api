@@ -1,4 +1,4 @@
-using MongoDB.Bson;
+ï»¿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace ApiMercadoComunidad.Models;
@@ -10,14 +10,17 @@ public class ImageUpload
     public string? Id { get; set; }
 
     [BsonElement("folder")]
-    public string Folder { get; set; } = string.Empty; // user, store, community, product
+    public string Folder { get; set; } = string.Empty;
 
     [BsonElement("entityId")]
     [BsonRepresentation(BsonType.ObjectId)]
-    public string EntityId { get; set; } = string.Empty; // ID del usuario, tienda, comunidad o producto
+    public string EntityId { get; set; } = string.Empty;
 
     [BsonElement("fileName")]
     public string FileName { get; set; } = string.Empty;
+
+    [BsonElement("objectKey")]
+    public string ObjectKey { get; set; } = string.Empty;
 
     [BsonElement("originalFileName")]
     public string OriginalFileName { get; set; } = string.Empty;
@@ -34,7 +37,7 @@ public class ImageUpload
     [BsonElement("uploadedBy")]
     [BsonRepresentation(BsonType.ObjectId)]
     [BsonIgnoreIfNull]
-    public string? UploadedBy { get; set; } // ID del usuario que subió la imagen
+    public string? UploadedBy { get; set; }
 
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; }

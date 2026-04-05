@@ -9,6 +9,7 @@ public class CreateProductRequest
     public decimal Price { get; set; }
     public List<string> Images { get; set; } = new();
     public string Category { get; set; } = string.Empty;
+    public bool IsNew { get; set; } = true;
 }
 
 public class UpdateProductRequest
@@ -20,6 +21,7 @@ public class UpdateProductRequest
     public List<string>? Images { get; set; }
     public string? Category { get; set; }
     public bool? Active { get; set; }
+    public bool? IsNew { get; set; }
 }
 
 public class ProductResponse
@@ -33,11 +35,12 @@ public class ProductResponse
     public List<string> Images { get; set; } = new();
     public string Category { get; set; } = string.Empty;
     public bool Active { get; set; }
+    public bool IsNew { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
 
-// Nuevos DTOs para gestiÛn de im·genes
+// Nuevos DTOs para gesti√≥n de im√°genes
 public class AddImageRequest
 {
     public string ImageUrl { get; set; } = string.Empty;

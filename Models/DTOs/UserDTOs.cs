@@ -6,6 +6,13 @@ public class RegisterRequest
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string? Phone { get; set; }
+    /// <summary>buyer (default) or user (seller)</summary>
+    public string? Role { get; set; }
+}
+
+public class UpdateRoleRequest
+{
+    public string Role { get; set; } = string.Empty;
 }
 
 public class LoginRequest
@@ -30,6 +37,11 @@ public class ChangePasswordRequest
 }
 
 public class RequestPasswordResetRequest
+{
+    public string Email { get; set; } = string.Empty;
+}
+
+public class RequestEmailVerificationRequest
 {
     public string Email { get; set; } = string.Empty;
 }
@@ -60,10 +72,34 @@ public class UserResponse
     public Address? Address { get; set; }
     public DateTime? LastLogin { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? PlanId { get; set; }
+    public PlanSummaryResponse? Plan { get; set; }
 }
 
 public class AuthResponse
 {
     public string Token { get; set; } = string.Empty;
     public UserResponse User { get; set; } = null!;
+}
+
+public class PlanSummaryResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string Tier { get; set; } = string.Empty;
+    public bool Active { get; set; }
+    public PlanLimitsResponse Limits { get; set; } = new();
+}
+
+public class PlanLimitsResponse
+{
+    public int Stores { get; set; } = -1;
+    public int Products { get; set; } = -1;
+    public int ImagesPerProduct { get; set; } = -1;
+    public bool VideoPerProduct { get; set; }
+    public int CommunitiesJoin { get; set; } = -1;
+    public int CommunitiesCreate { get; set; } = -1;
+    public int SellersPerCommunity { get; set; } = -1;
 }
