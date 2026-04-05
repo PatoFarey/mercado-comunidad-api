@@ -9,7 +9,11 @@ public static class AuthorizationHelpers
     public static string? GetCurrentUserId(ClaimsPrincipal user) =>
         user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue(ClaimTypes.Name);
 
-    public static bool IsAdmin(ClaimsPrincipal user) => user.IsInRole("admin");
+    public static bool IsAdmin(ClaimsPrincipal user) =>
+        user.IsInRole(UserRoles.SuperAdmin) || user.IsInRole(UserRoles.CommunityAdmin);
+
+    public static bool IsSuperAdmin(ClaimsPrincipal user) =>
+        user.IsInRole(UserRoles.SuperAdmin);
 
     public static bool CanAccessUser(ClaimsPrincipal user, string targetUserId)
     {

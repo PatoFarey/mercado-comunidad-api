@@ -43,6 +43,10 @@ public class Store
     [BsonIgnoreIfDefault]
     public string Email { get; set; } = string.Empty;
 
+    [BsonElement("description")]
+    [BsonIgnoreIfDefault]
+    public string Description { get; set; } = string.Empty;
+
     [BsonElement("link_store")]
     public string LinkStore { get; set; } = string.Empty;
 

@@ -137,13 +137,14 @@ public class ProductService : IProductService
             Images = request.Images,
             Category = request.Category,
             Active = true,
+            IsNew = request.IsNew,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
 
         await _productsCollection.InsertOneAsync(product);
 
-        // Sincronizar automáticamente
+        // Sincronizar automÃ¡ticamente
         await _synchronizeService.SynchronizeProductAsync(product.Id ?? string.Empty);
 
         return MapToProductResponse(product);
@@ -175,6 +176,9 @@ public class ProductService : IProductService
         if (request.Active.HasValue)
             updateDefinition = updateDefinition.Set(p => p.Active, request.Active.Value);
 
+        if (request.IsNew.HasValue)
+            updateDefinition = updateDefinition.Set(p => p.IsNew, request.IsNew.Value);
+
         var result = await _productsCollection.UpdateOneAsync(
             p => p.Id == id,
             updateDefinition
@@ -183,7 +187,7 @@ public class ProductService : IProductService
         if (result.ModifiedCount == 0)
             return null;
 
-        // Sincronizar automáticamente después de actualizar
+        // Sincronizar automÃ¡ticamente despuÃ©s de actualizar
         await _synchronizeService.SynchronizeProductAsync(id);
 
         return await GetByIdAsync(id);
@@ -217,6 +221,7 @@ public class ProductService : IProductService
             Images = product.Images,
             Category = product.Category,
             Active = product.Active,
+            IsNew = product.IsNew,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
         };
@@ -242,7 +247,7 @@ public class ProductService : IProductService
 
         await _productsCollection.UpdateOneAsync(p => p.Id == id, update);
 
-        // Sincronizar para actualizar las imágenes en community_products
+        // Sincronizar para actualizar las imÃ¡genes en community_products
         await _synchronizeService.SynchronizeProductAsync(id);
 
         return await GetByIdAsync(id);
@@ -280,12 +285,12 @@ public class ProductService : IProductService
         if (product == null)
             return null;
 
-        // Validar que todas las imágenes existan en el producto
+        // Validar que todas las imÃ¡genes existan en el producto
         var missingImages = images.Except(product.Images).ToList();
         if (missingImages.Any())
-            throw new InvalidOperationException($"Las siguientes imágenes no existen en el producto: {string.Join(", ", missingImages)}");
+            throw new InvalidOperationException($"Las siguientes imÃ¡genes no existen en el producto: {string.Join(", ", missingImages)}");
 
-        // Actualizar el orden de las imágenes
+        // Actualizar el orden de las imÃ¡genes
         var update = Builders<Products>.Update
             .Set(p => p.Images, images)
             .Set(p => p.UpdatedAt, DateTime.UtcNow);

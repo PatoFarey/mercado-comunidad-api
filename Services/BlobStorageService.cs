@@ -1,45 +1,65 @@
-using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models;
-using Microsoft.Extensions.Options;
-using MongoDB.Driver;
+ï»¿using Amazon.Runtime;
+using Amazon.S3;
+using Amazon.S3.Model;
 using ApiMercadoComunidad.Configuration;
 using ApiMercadoComunidad.Models;
 using ApiMercadoComunidad.Models.DTOs;
+using Microsoft.Extensions.Options;
+using MongoDB.Driver;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.Processing;
 
 namespace ApiMercadoComunidad.Services;
 
 public class BlobStorageService : IBlobStorageService
 {
-    private readonly BlobServiceClient _blobServiceClient;
-    private readonly BlobContainerClient _containerClient;
+    private static readonly string[] ValidFolders = ["user", "store", "community", "product"];
+
+    private readonly IAmazonS3 _s3Client;
     private readonly IMongoCollection<ImageUpload> _imagesCollection;
     private readonly IMongoCollection<User> _usersCollection;
     private readonly IMongoCollection<Store> _storesCollection;
     private readonly IMongoCollection<Community> _communitiesCollection;
     private readonly IProductService _productService;
-    private readonly string _containerName;
+    private readonly string _bucketName;
+    private readonly string _publicBaseUrl;
 
     public BlobStorageService(
-        IOptions<AzureBlobSettings> azureBlobSettings,
+        IOptions<R2StorageSettings> r2StorageSettings,
         IOptions<MongoDbSettings> mongoDbSettings,
         IProductService productService)
     {
-        _blobServiceClient = new BlobServiceClient(azureBlobSettings.Value.ConnectionString);
-        _containerName = azureBlobSettings.Value.ContainerName;
-        _containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+        var settings = r2StorageSettings.Value;
 
-        // Crear el contenedor si no existe
-        _containerClient.CreateIfNotExists(PublicAccessType.Blob);
+        if (string.IsNullOrWhiteSpace(settings.AccountId) ||
+            string.IsNullOrWhiteSpace(settings.AccessKeyId) ||
+            string.IsNullOrWhiteSpace(settings.SecretAccessKey) ||
+            string.IsNullOrWhiteSpace(settings.BucketName) ||
+            string.IsNullOrWhiteSpace(settings.PublicBaseUrl))
+        {
+            throw new InvalidOperationException("R2StorageSettings is incomplete. Configure AccountId, AccessKeyId, SecretAccessKey, BucketName and PublicBaseUrl.");
+        }
 
-        // MongoDB
+        _bucketName = settings.BucketName;
+        _publicBaseUrl = settings.PublicBaseUrl.TrimEnd('/');
+
+        var credentials = new BasicAWSCredentials(settings.AccessKeyId, settings.SecretAccessKey);
+        var config = new AmazonS3Config
+        {
+            ServiceURL = $"https://{settings.AccountId}.r2.cloudflarestorage.com",
+            AuthenticationRegion = "auto",
+            ForcePathStyle = true
+        };
+
+        _s3Client = new AmazonS3Client(credentials, config);
+
         var mongoClient = new MongoClient(mongoDbSettings.Value.ConnectionString);
         var mongoDatabase = mongoClient.GetDatabase(mongoDbSettings.Value.DatabaseName);
         _imagesCollection = mongoDatabase.GetCollection<ImageUpload>("images");
         _usersCollection = mongoDatabase.GetCollection<User>("users");
         _storesCollection = mongoDatabase.GetCollection<Store>("stores");
         _communitiesCollection = mongoDatabase.GetCollection<Community>("communities");
-
-        // Inyectar ProductService
         _productService = productService;
     }
 
@@ -49,16 +69,20 @@ public class BlobStorageService : IBlobStorageService
         string contentType,
         ImageUploadRequest request)
     {
-        // Validar folder
-        var validFolders = new[] { "user", "store", "community", "product" };
-        if (!validFolders.Contains(request.Folder.ToLower()))
-            throw new ArgumentException($"Folder debe ser uno de: {string.Join(", ", validFolders)}");
+        var normalizedFolder = request.Folder.ToLowerInvariant();
+        if (!ValidFolders.Contains(normalizedFolder))
+        {
+            throw new ArgumentException($"Folder debe ser uno de: {string.Join(", ", ValidFolders)}");
+        }
 
-        // PASO 1: Buscar y eliminar imagen anterior si existe (solo si NO es temporal)
-        if (!request.EntityId.StartsWith("temp-", StringComparison.OrdinalIgnoreCase))
+        // Solo reemplazar imagen existente para entidades de imagen Ãºnica (user, store).
+        // Los productos admiten mÃºltiples imÃ¡genes, por lo que no se elimina la anterior.
+        var singleImageFolders = new[] { "user", "store" };
+        if (!request.EntityId.StartsWith("temp-", StringComparison.OrdinalIgnoreCase)
+            && singleImageFolders.Contains(normalizedFolder))
         {
             var existingImageFilter = Builders<ImageUpload>.Filter.And(
-                Builders<ImageUpload>.Filter.Eq(i => i.Folder, request.Folder.ToLower()),
+                Builders<ImageUpload>.Filter.Eq(i => i.Folder, normalizedFolder),
                 Builders<ImageUpload>.Filter.Eq(i => i.EntityId, request.EntityId),
                 Builders<ImageUpload>.Filter.Eq(i => i.IsActive, true)
             );
@@ -69,47 +93,43 @@ public class BlobStorageService : IBlobStorageService
 
             if (existingImage != null)
             {
-                // Eliminar del Blob Storage
-                var oldBlobName = $"{existingImage.Folder}/{existingImage.FileName}";
-                var oldBlobClient = _containerClient.GetBlobClient(oldBlobName);
-                await oldBlobClient.DeleteIfExistsAsync();
-
-                // Eliminar de MongoDB
+                await DeleteObjectAsync(GetObjectKey(existingImage));
                 await _imagesCollection.DeleteOneAsync(i => i.Id == existingImage.Id);
             }
         }
 
-        // PASO 2: Generar nombre único para el nuevo archivo
-        var fileExtension = Path.GetExtension(fileName);
-        var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
-        var blobName = $"{request.Folder.ToLower()}/{uniqueFileName}";
+        var (processedStream, processedContentType, processedExtension) = await ProcessImageAsync(fileStream);
+        await using var _ = processedStream;
 
-        // PASO 3: Subir a Azure Blob Storage
-        var blobClient = _containerClient.GetBlobClient(blobName);
+        var uniqueFileName = $"{Guid.NewGuid()}{processedExtension}";
+        var objectKey = BuildObjectKey(normalizedFolder, request.EntityId, uniqueFileName);
 
-        var blobHttpHeaders = new BlobHttpHeaders
+        var uploadRequest = new PutObjectRequest
         {
-            ContentType = contentType
+            BucketName = _bucketName,
+            Key = objectKey,
+            InputStream = processedStream,
+            ContentType = processedContentType,
+            AutoCloseStream = false,
+            DisablePayloadSigning = true,
+            DisableDefaultChecksumValidation = true
         };
 
-        await blobClient.UploadAsync(fileStream, new BlobUploadOptions
-        {
-            HttpHeaders = blobHttpHeaders
-        });
+        await _s3Client.PutObjectAsync(uploadRequest);
 
-        // Obtener URL del blob
-        var blobUrl = blobClient.Uri.ToString();
+        var blobUrl = BuildPublicUrl(objectKey);
+        var fileSizeBytes = processedStream.CanSeek ? processedStream.Length : 0;
 
-        // PASO 4: Guardar metadatos en MongoDB
         var imageUpload = new ImageUpload
         {
-            Folder = request.Folder.ToLower(),
+            Folder = normalizedFolder,
             EntityId = request.EntityId,
             FileName = uniqueFileName,
+            ObjectKey = objectKey,
             OriginalFileName = fileName,
             BlobUrl = blobUrl,
-            ContentType = contentType,
-            FileSizeBytes = fileStream.Length,
+            ContentType = processedContentType,
+            FileSizeBytes = fileSizeBytes,
             UploadedBy = request.UploadedBy,
             CreatedAt = DateTime.UtcNow,
             IsActive = true
@@ -117,10 +137,9 @@ public class BlobStorageService : IBlobStorageService
 
         await _imagesCollection.InsertOneAsync(imageUpload);
 
-        // PASO 5: Actualizar la entidad correspondiente según el folder (solo si NO es temporal)
         if (!request.EntityId.StartsWith("temp-", StringComparison.OrdinalIgnoreCase))
         {
-            switch (request.Folder.ToLower())
+            switch (normalizedFolder)
             {
                 case "user":
                     var userUpdate = Builders<User>.Update
@@ -145,7 +164,6 @@ public class BlobStorageService : IBlobStorageService
                     break;
 
                 case "product":
-                    // Agregar imagen al array de imágenes del producto
                     await _productService.AddImageAsync(request.EntityId, blobUrl);
                     break;
             }
@@ -189,14 +207,12 @@ public class BlobStorageService : IBlobStorageService
     {
         var image = await GetImageByIdAsync(id);
         if (image == null)
+        {
             return false;
+        }
 
-        // Eliminar del Blob Storage
-        var blobName = $"{image.Folder}/{image.FileName}";
-        var blobClient = _containerClient.GetBlobClient(blobName);
-        await blobClient.DeleteIfExistsAsync();
+        await DeleteObjectAsync(GetObjectKey(image));
 
-        // Si es una imagen de producto, también eliminarla del array
         if (image.Folder == "product" && !image.EntityId.StartsWith("temp-", StringComparison.OrdinalIgnoreCase))
         {
             try
@@ -205,22 +221,17 @@ public class BlobStorageService : IBlobStorageService
             }
             catch (InvalidOperationException)
             {
-                // La imagen ya no existe en el producto, continuar con el soft delete
             }
         }
 
-        // Marcar como inactivo en MongoDB (soft delete)
         var update = Builders<ImageUpload>.Update.Set(i => i.IsActive, false);
         var result = await _imagesCollection.UpdateOneAsync(i => i.Id == id, update);
 
         return result.ModifiedCount > 0;
     }
 
-    // Agregar este método al final de la clase BlobStorageService
-
     public async Task<bool> DeleteImageByUrlAsync(string blobUrl, string entityId)
     {
-        // Buscar la imagen por URL y EntityId
         var filter = Builders<ImageUpload>.Filter.And(
             Builders<ImageUpload>.Filter.Eq(i => i.BlobUrl, blobUrl),
             Builders<ImageUpload>.Filter.Eq(i => i.EntityId, entityId),
@@ -232,14 +243,12 @@ public class BlobStorageService : IBlobStorageService
             .FirstOrDefaultAsync();
 
         if (image == null)
+        {
             return false;
+        }
 
-        // Eliminar del Blob Storage
-        var blobName = $"{image.Folder}/{image.FileName}";
-        var blobClient = _containerClient.GetBlobClient(blobName);
-        await blobClient.DeleteIfExistsAsync();
+        await DeleteObjectAsync(GetObjectKey(image));
 
-        // Si es una imagen de producto, también eliminarla del array
         if (image.Folder == "product")
         {
             try
@@ -248,27 +257,77 @@ public class BlobStorageService : IBlobStorageService
             }
             catch (InvalidOperationException)
             {
-                // La imagen ya no existe en el producto, continuar con el soft delete
             }
         }
 
-        // Marcar como inactivo en MongoDB (soft delete)
-        //var update = Builders<ImageUpload>.Update.Set(i => i.IsActive, false);
-        //var result = await _imagesCollection.UpdateOneAsync(
-        //    i => i.Id == image.Id,
-        //    update
-        //);
-        //return result.ModifiedCount > 0;
-
-        // Eliminar de MongoDB (hard delete)
         var result = await _imagesCollection.DeleteOneAsync(i => i.Id == image.Id);
-
         return result.DeletedCount > 0;
-
     }
-    public async Task<string> GetImageUrlAsync(string blobName)
+
+    public Task<string> GetImageUrlAsync(string blobName)
     {
-        var blobClient = _containerClient.GetBlobClient(blobName);
-        return blobClient.Uri.ToString();
+        return Task.FromResult(BuildPublicUrl(blobName));
+    }
+
+    private string BuildObjectKey(string folder, string entityId, string fileName)
+    {
+        return $"{folder.ToLowerInvariant()}/{entityId}/{fileName}";
+    }
+
+    private string GetObjectKey(ImageUpload image)
+    {
+        if (!string.IsNullOrWhiteSpace(image.ObjectKey))
+        {
+            return image.ObjectKey;
+        }
+
+        return BuildObjectKey(image.Folder, image.EntityId, image.FileName);
+    }
+
+    private string BuildPublicUrl(string objectKey)
+    {
+        return $"{_publicBaseUrl}/{objectKey}";
+    }
+
+    private static async Task<(Stream processedStream, string contentType, string extension)> ProcessImageAsync(Stream input)
+    {
+        const int MaxDimension = 1200;
+        const int WebpQuality = 82;
+
+        using var image = await Image.LoadAsync(input);
+
+        if (image.Width > MaxDimension || image.Height > MaxDimension)
+        {
+            image.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Size = new Size(MaxDimension, MaxDimension),
+                Mode = ResizeMode.Max
+            }));
+        }
+
+        var output = new MemoryStream();
+        await image.SaveAsWebpAsync(output, new WebpEncoder { Quality = WebpQuality });
+        output.Position = 0;
+
+        return (output, "image/webp", ".webp");
+    }
+
+    private async Task DeleteObjectAsync(string objectKey)
+    {
+        try
+        {
+            await _s3Client.DeleteObjectAsync(new DeleteObjectRequest
+            {
+                BucketName = _bucketName,
+                Key = objectKey
+            });
+        }
+        catch (AmazonS3Exception ex) when (
+            ex.StatusCode == System.Net.HttpStatusCode.NotFound ||
+            string.Equals(ex.ErrorCode, "NoSuchKey", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("NoSuchKey", StringComparison.OrdinalIgnoreCase))
+        {
+            // Si el archivo no existe en storage, no debe bloquear la limpieza en BD.
+        }
     }
 }

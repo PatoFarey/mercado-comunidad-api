@@ -38,6 +38,11 @@ public class Community
 
     [BsonElement("logo")]
     public string Logo { get; set; } = string.Empty;
+
+    [BsonElement("ownerUserId")]
+    [BsonIgnoreIfNull]
+    public string? OwnerUserId { get; set; }
+
     [BsonElement("createdAt")]
     [BsonIgnoreIfNull]
     public DateTime? CreatedAt { get; set; }

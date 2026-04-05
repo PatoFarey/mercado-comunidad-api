@@ -12,6 +12,7 @@ public class CreateStoreRequest
     public string? Instagram { get; set; }
     public string? Tiktok { get; set; }
     public string? Website { get; set; }
+    public string? Description { get; set; }
     public string? UserId { get; set; } // Usuario creador
     public bool IsGlobal { get; set; } = false;
 }
@@ -27,6 +28,7 @@ public class UpdateStoreRequest
     public string? Instagram { get; set; }
     public string? Tiktok { get; set; }
     public string? Website { get; set; }
+    public string? Description { get; set; }
     public bool? IsGlobal { get; set; }
 }
 
@@ -42,6 +44,7 @@ public class StoreResponse
     public string Instagram { get; set; } = string.Empty;
     public string Tiktok { get; set; } = string.Empty;
     public string Website { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public string LinkStore { get; set; } = string.Empty;
     public List<StoreUser> Users { get; set; } = new();
     public bool IsGlobal { get; set; }

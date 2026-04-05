@@ -1,7 +1,9 @@
 ﻿using ApiMercadoComunidad.Configuration;
+using ApiMercadoComunidad.Models;
 using ApiMercadoComunidad.Models.DTOs;
 using ApiMercadoComunidad.Security;
 using ApiMercadoComunidad.Services;
+using MongoDB.Driver;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
@@ -12,8 +14,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<MongoDbSettings>(
     builder.Configuration.GetSection("MongoDbSettings"));
 
-builder.Services.Configure<AzureBlobSettings>(
-    builder.Configuration.GetSection("AzureBlobSettings"));
+builder.Services.Configure<R2StorageSettings>(
+    builder.Configuration.GetSection("R2StorageSettings"));
 
 builder.Services.Configure<EmailSettings>(
     builder.Configuration.GetSection("EmailSettings"));
@@ -32,6 +34,13 @@ if (string.IsNullOrWhiteSpace(jwtSettings.Issuer) || string.IsNullOrWhiteSpace(j
 
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key));
 
+builder.Services.AddSingleton<IMongoDatabase>(sp =>
+{
+    var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MongoDbSettings>>().Value;
+    var client = new MongoClient(settings.ConnectionString);
+    return client.GetDatabase(settings.DatabaseName);
+});
+
 builder.Services.AddSingleton<IProductService, ProductService>();
 builder.Services.AddSingleton<ICommunityService, CommunityService>();
 builder.Services.AddSingleton<ICommunityProductService, CommunityProductService>();
@@ -42,6 +51,9 @@ builder.Services.AddSingleton<ICategoryService, CategoryService>();
 builder.Services.AddSingleton<IProductSynchronizeService, ProductSynchronizeService>();
 builder.Services.AddSingleton<IEmailService, EmailService>();
 builder.Services.AddSingleton<ITokenService, TokenService>();
+builder.Services.AddSingleton<ISalesService, SalesService>();
+builder.Services.AddSingleton<IMetricsService, MetricsService>();
+builder.Services.AddSingleton<IPlanService, PlanService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -104,6 +116,292 @@ bool CanAccessEmail(ClaimsPrincipal user, string email)
             string.Equals(currentEmail, email, StringComparison.OrdinalIgnoreCase));
 }
 
+bool IsSellerUser(ClaimsPrincipal user) => user.IsInRole(UserRoles.Seller);
+
+int ResolveStoreLimit(Plan plan)
+{
+    if (plan.Limits.Stores == -1 || plan.Limits.Stores > 0)
+        return plan.Limits.Stores;
+
+    if (plan.Tier.Equals("free", StringComparison.OrdinalIgnoreCase))
+        return 1;
+
+    if (plan.Tier.Equals("pro", StringComparison.OrdinalIgnoreCase))
+        return 3;
+
+    return -1;
+}
+
+int ResolvePlanLimit(int rawLimit) => rawLimit == 0 ? -1 : rawLimit;
+
+async Task<(bool Allowed, string Message)> CheckStoreCreationLimitAsync(
+    ClaimsPrincipal user,
+    IPlanService planService,
+    IMongoDatabase db)
+{
+    if (!IsSellerUser(user))
+        return (true, string.Empty);
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    if (string.IsNullOrWhiteSpace(currentUserId))
+        return (false, "No se pudo identificar el usuario.");
+
+    var plan = await planService.GetEffectivePlanForUserAsync(currentUserId);
+    if (plan == null)
+        return (true, string.Empty);
+
+    var storesLimit = ResolveStoreLimit(plan);
+    if (storesLimit < 0)
+        return (true, string.Empty);
+
+    var storesCollection = db.GetCollection<Store>("stores");
+    var storesCountFilter = Builders<Store>.Filter.And(
+        Builders<Store>.Filter.ElemMatch(s => s.Users, u => u.UserID == currentUserId),
+        Builders<Store>.Filter.Eq(s => s.Active, true)
+    );
+    var currentStores = await storesCollection.CountDocumentsAsync(storesCountFilter);
+
+    return currentStores >= storesLimit
+        ? (false, $"Tu plan actual permite hasta {storesLimit} tienda(s).")
+        : (true, string.Empty);
+}
+
+async Task<(bool Allowed, string Message)> CheckProductCreationLimitAsync(
+    ClaimsPrincipal user,
+    IPlanService planService,
+    IMongoDatabase db)
+{
+    if (!IsSellerUser(user))
+        return (true, string.Empty);
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    if (string.IsNullOrWhiteSpace(currentUserId))
+        return (false, "No se pudo identificar el usuario.");
+
+    var plan = await planService.GetEffectivePlanForUserAsync(currentUserId);
+    if (plan == null)
+        return (true, string.Empty);
+
+    var productsLimit = ResolvePlanLimit(plan.Limits.Products);
+    if (productsLimit < 0)
+        return (true, string.Empty);
+
+    var storesCollection = db.GetCollection<Store>("stores");
+    var productsCollection = db.GetCollection<Products>("products");
+
+    var userStoreIds = await storesCollection
+        .Find(Builders<Store>.Filter.And(
+            Builders<Store>.Filter.ElemMatch(s => s.Users, u => u.UserID == currentUserId),
+            Builders<Store>.Filter.Eq(s => s.Active, true)))
+        .Project(s => s.Id)
+        .ToListAsync();
+
+    if (userStoreIds.Count == 0)
+        return (true, string.Empty);
+
+    var productsFilter = Builders<Products>.Filter.And(
+        Builders<Products>.Filter.In(p => p.IdStore, userStoreIds),
+        Builders<Products>.Filter.Eq(p => p.Active, true)
+    );
+    var currentProducts = await productsCollection.CountDocumentsAsync(productsFilter);
+
+    return currentProducts >= productsLimit
+        ? (false, $"Tu plan actual permite hasta {productsLimit} producto(s).")
+        : (true, string.Empty);
+}
+
+async Task<(bool Allowed, string Message)> CheckProductImagesLimitAsync(
+    ClaimsPrincipal user,
+    string productId,
+    int targetImagesCount,
+    IProductService productService,
+    IPlanService planService)
+{
+    if (!IsSellerUser(user))
+        return (true, string.Empty);
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    if (string.IsNullOrWhiteSpace(currentUserId))
+        return (false, "No se pudo identificar el usuario.");
+
+    var plan = await planService.GetEffectivePlanForUserAsync(currentUserId);
+    if (plan == null)
+        return (true, string.Empty);
+
+    var imagesPerProductLimit = ResolvePlanLimit(plan.Limits.ImagesPerProduct);
+    if (imagesPerProductLimit < 0)
+        return (true, string.Empty);
+
+    var product = await productService.GetByIdAsync(productId);
+    if (product == null)
+        return (false, "Producto no encontrado.");
+
+    return targetImagesCount > imagesPerProductLimit
+        ? (false, $"Tu plan permite hasta {imagesPerProductLimit} imagen(es) por producto.")
+        : (true, string.Empty);
+}
+
+async Task<(bool Allowed, string Message)> CheckCommunityCreationLimitAsync(
+    ClaimsPrincipal user,
+    IPlanService planService,
+    IMongoDatabase db)
+{
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return (true, string.Empty);
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    if (string.IsNullOrWhiteSpace(currentUserId))
+        return (false, "No se pudo identificar el usuario.");
+
+    var plan = await planService.GetEffectivePlanForCommunityAdminAsync(currentUserId);
+    if (plan == null)
+        return (true, string.Empty);
+
+    var limit = plan.Limits.CommunitiesCreate == 0 ? -1 : plan.Limits.CommunitiesCreate;
+    if (limit < 0)
+        return (true, string.Empty);
+
+    var communitiesCol = db.GetCollection<Community>("communities");
+    var current = await communitiesCol.CountDocumentsAsync(
+        Builders<Community>.Filter.And(
+            Builders<Community>.Filter.Eq(c => c.OwnerUserId, currentUserId),
+            Builders<Community>.Filter.Eq(c => c.Active, true)));
+
+    return current >= limit
+        ? (false, $"Tu plan permite crear hasta {limit} feria(s)/comunidad(es).")
+        : (true, string.Empty);
+}
+
+async Task<(bool Allowed, string Message)> CheckSellersPerCommunityLimitAsync(
+    string communityId,
+    IMongoDatabase db)
+{
+    var communitiesCol = db.GetCollection<Community>("communities");
+    var community = await communitiesCol
+        .Find(Builders<Community>.Filter.Eq(c => c.Id, communityId))
+        .FirstOrDefaultAsync();
+
+    if (community == null || string.IsNullOrWhiteSpace(community.OwnerUserId))
+        return (true, string.Empty);
+
+    // Get owner's plan
+    var usersCol = db.GetCollection<User>("users");
+    var owner = await usersCol
+        .Find(Builders<User>.Filter.And(
+            Builders<User>.Filter.Eq(u => u.Id, community.OwnerUserId),
+            Builders<User>.Filter.Eq(u => u.IsActive, true)))
+        .FirstOrDefaultAsync();
+
+    if (owner == null)
+        return (true, string.Empty);
+
+    var plansCol = db.GetCollection<Plan>("plans");
+    Plan? plan = null;
+
+    if (!string.IsNullOrWhiteSpace(owner.PlanId))
+    {
+        plan = await plansCol
+            .Find(Builders<Plan>.Filter.And(
+                Builders<Plan>.Filter.Eq(p => p.Id, owner.PlanId),
+                Builders<Plan>.Filter.Eq(p => p.Active, true),
+                Builders<Plan>.Filter.Eq(p => p.Type, "admin")))
+            .FirstOrDefaultAsync();
+    }
+
+    if (plan == null)
+    {
+        plan = await plansCol
+            .Find(Builders<Plan>.Filter.And(
+                Builders<Plan>.Filter.Eq(p => p.Active, true),
+                Builders<Plan>.Filter.Eq(p => p.Type, "admin"),
+                Builders<Plan>.Filter.Eq(p => p.Tier, "free")))
+            .SortBy(p => p.PriceClp)
+            .FirstOrDefaultAsync();
+    }
+
+    if (plan == null)
+        return (true, string.Empty);
+
+    var limit = plan.Limits.SellersPerCommunity == 0 ? -1 : plan.Limits.SellersPerCommunity;
+    if (limit < 0)
+        return (true, string.Empty);
+
+    var communityStoresCol = db.GetCollection<CommunityStore>("community_stores");
+    var current = await communityStoresCol.CountDocumentsAsync(
+        Builders<CommunityStore>.Filter.And(
+            Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, communityId),
+            Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)));
+
+    return current >= limit
+        ? (false, $"Esta feria/comunidad alcanzó el límite de {limit} tienda(s) permitidas por su plan.")
+        : (true, string.Empty);
+}
+
+async Task<(bool Allowed, string Message)> CheckCommunitiesJoinLimitAsync(
+    ClaimsPrincipal user,
+    string communityId,
+    bool includePendingRequests,
+    IPlanService planService,
+    IMongoDatabase db)
+{
+    if (!IsSellerUser(user))
+        return (true, string.Empty);
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    if (string.IsNullOrWhiteSpace(currentUserId))
+        return (false, "No se pudo identificar el usuario.");
+
+    var plan = await planService.GetEffectivePlanForUserAsync(currentUserId);
+    if (plan == null)
+        return (true, string.Empty);
+
+    var communitiesLimit = ResolvePlanLimit(plan.Limits.CommunitiesJoin);
+    if (communitiesLimit < 0)
+        return (true, string.Empty);
+
+    var storesCollection = db.GetCollection<Store>("stores");
+    var communityStoresCollection = db.GetCollection<CommunityStore>("community_stores");
+    var communityRequestsCollection = db.GetCollection<CommunityRequest>("community_requests");
+
+    var userStoreIds = await storesCollection
+        .Find(Builders<Store>.Filter.And(
+            Builders<Store>.Filter.ElemMatch(s => s.Users, u => u.UserID == currentUserId),
+            Builders<Store>.Filter.Eq(s => s.Active, true)))
+        .Project(s => s.Id)
+        .ToListAsync();
+
+    if (userStoreIds.Count == 0)
+        return (true, string.Empty);
+
+    var activeCommunityIds = await communityStoresCollection
+        .Find(Builders<CommunityStore>.Filter.And(
+            Builders<CommunityStore>.Filter.In(cs => cs.StoreId, userStoreIds),
+            Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)))
+        .Project(cs => cs.CommunityId)
+        .ToListAsync();
+
+    var trackedCommunityIds = new HashSet<string>(activeCommunityIds.Where(id => !string.IsNullOrWhiteSpace(id)));
+
+    if (includePendingRequests)
+    {
+        var pendingCommunityIds = await communityRequestsCollection
+            .Find(Builders<CommunityRequest>.Filter.And(
+                Builders<CommunityRequest>.Filter.In(cr => cr.StoreId, userStoreIds),
+                Builders<CommunityRequest>.Filter.Eq(cr => cr.Status, "pending")))
+            .Project(cr => cr.CommunityId)
+            .ToListAsync();
+
+        foreach (var pendingCommunityId in pendingCommunityIds.Where(id => !string.IsNullOrWhiteSpace(id)))
+            trackedCommunityIds.Add(pendingCommunityId);
+    }
+
+    var willIncrease = !trackedCommunityIds.Contains(communityId);
+
+    return willIncrease && trackedCommunityIds.Count >= communitiesLimit
+        ? (false, $"Tu plan permite hasta {communitiesLimit} feria(s)/comunidad(es).")
+        : (true, string.Empty);
+}
+
 #region Products
 
 app.MapGet("/products", async (IProductService service, int pageNumber = 1, int pageSize = 10) =>
@@ -136,7 +434,7 @@ app.MapGet("/products/active/list", async (IProductService service) =>
     return Results.Ok(products);
 });
 
-app.MapPost("/products", async (CreateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
+app.MapPost("/products", async (CreateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService, IMongoDatabase db) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -147,17 +445,40 @@ app.MapPost("/products", async (CreateProductRequest request, ClaimsPrincipal us
     if (!await AuthorizationHelpers.CanManageStoreAsync(request.IdStore, user, storeService))
         return Results.Forbid();
 
+    var productLimitCheck = await CheckProductCreationLimitAsync(user, planService, db);
+    if (!productLimitCheck.Allowed)
+        return Results.BadRequest(new { message = productLimitCheck.Message, code = "PLAN_LIMIT_PRODUCTS" });
+
+    if (IsSellerUser(user))
+    {
+        var currentUserId = AuthorizationHelpers.GetCurrentUserId(user)!;
+        var plan = await planService.GetEffectivePlanForUserAsync(currentUserId);
+        if (plan != null)
+        {
+            var imagesPerProductLimit = ResolvePlanLimit(plan.Limits.ImagesPerProduct);
+            if (imagesPerProductLimit > -1 && request.Images.Count > imagesPerProductLimit)
+                return Results.BadRequest(new { message = $"Tu plan permite hasta {imagesPerProductLimit} imagen(es) por producto.", code = "PLAN_LIMIT_IMAGES" });
+        }
+    }
+
     var product = await service.CreateAsync(request);
     return Results.Created($"/products/{product.Id}", product);
 }).RequireAuthorization();
 
-app.MapPut("/products/{id}", async (string id, UpdateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
+app.MapPut("/products/{id}", async (string id, UpdateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
 
     if (!await AuthorizationHelpers.CanManageProductAsync(id, user, service, storeService))
         return Results.Forbid();
+
+    if (request.Images != null)
+    {
+        var imagesLimitCheck = await CheckProductImagesLimitAsync(user, id, request.Images.Count, service, planService);
+        if (!imagesLimitCheck.Allowed)
+            return Results.BadRequest(new { message = imagesLimitCheck.Message, code = "PLAN_LIMIT_IMAGES" });
+    }
 
     var product = await service.UpdateAsync(id, request);
     return product is not null ? Results.Ok(product) : Results.NotFound();
@@ -175,7 +496,7 @@ app.MapDelete("/products/{id}", async (string id, ClaimsPrincipal user, IProduct
     return success ? Results.NoContent() : Results.NotFound();
 }).RequireAuthorization();
 
-app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
+app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -186,10 +507,19 @@ app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, 
     if (string.IsNullOrEmpty(request.ImageUrl))
         return Results.BadRequest(new { message = "ImageUrl es requerida" });
 
+    var product = await service.GetByIdAsync(id);
+    if (product == null)
+        return Results.NotFound();
+
+    var targetImagesCount = product.Images.Count + 1;
+    var imagesLimitCheck = await CheckProductImagesLimitAsync(user, id, targetImagesCount, service, planService);
+    if (!imagesLimitCheck.Allowed)
+        return Results.BadRequest(new { message = imagesLimitCheck.Message, code = "PLAN_LIMIT_IMAGES" });
+
     try
     {
-        var product = await service.AddImageAsync(id, request.ImageUrl);
-        return product is not null ? Results.Ok(product) : Results.NotFound();
+        var updated = await service.AddImageAsync(id, request.ImageUrl);
+        return updated is not null ? Results.Ok(updated) : Results.NotFound();
     }
     catch (InvalidOperationException ex)
     {
@@ -219,7 +549,7 @@ app.MapDelete("/products/{id}/images", async (string id, string imageUrl, Claims
     }
 }).RequireAuthorization();
 
-app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
+app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -229,6 +559,10 @@ app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesReque
 
     if (request.Images == null || !request.Images.Any())
         return Results.BadRequest(new { message = "Images es requerido y no puede estar vacío" });
+
+    var imagesLimitCheck = await CheckProductImagesLimitAsync(user, id, request.Images.Count, service, planService);
+    if (!imagesLimitCheck.Allowed)
+        return Results.BadRequest(new { message = imagesLimitCheck.Message, code = "PLAN_LIMIT_IMAGES" });
 
     try
     {
@@ -247,7 +581,7 @@ app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesReque
 
 app.MapGet("/communities", async (ICommunityService service) =>
 {
-    var communities = await service.GetAllAsync();
+    var communities = await service.GetAllWithStatsAsync();
     return Results.Ok(communities);
 });
 
@@ -271,9 +605,440 @@ app.MapGet("/communities/active", async (ICommunityService service) =>
 
 app.MapGet("/communities/visible", async (ICommunityService service) =>
 {
-    var communities = await service.GetVisibleCommunitiesAsync();
+    var communities = await service.GetVisibleWithStatsAsync();
     return Results.Ok(communities);
 });
+
+app.MapGet("/admin/communities/my", async (ClaimsPrincipal user, ICommunityService service) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    var currentEmail = user.FindFirstValue(ClaimTypes.Email);
+    var includeAll = AuthorizationHelpers.IsSuperAdmin(user);
+
+    var communities = await service.GetByOwnerWithStatsAsync(currentUserId, currentEmail, includeAll);
+    return Results.Ok(communities);
+}).RequireAuthorization();
+
+app.MapPost("/admin/communities", async (CreateCommunityRequest request, ClaimsPrincipal user, ICommunityService service, IPlanService planService, IMongoDatabase db) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    if (string.IsNullOrWhiteSpace(request.Name))
+        return Results.BadRequest(new { message = "Name es requerido." });
+
+    var communityCreationCheck = await CheckCommunityCreationLimitAsync(user, planService, db);
+    if (!communityCreationCheck.Allowed)
+        return Results.BadRequest(new { message = communityCreationCheck.Message, code = "PLAN_LIMIT_COMMUNITIES_CREATE" });
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    var currentEmail = user.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+
+    static string Slugify(string value)
+    {
+        var normalized = value.Trim().ToLowerInvariant();
+        var chars = normalized.Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray();
+        var slug = new string(chars);
+        while (slug.Contains("--"))
+            slug = slug.Replace("--", "-");
+        return slug.Trim('-');
+    }
+
+    var communityId = string.IsNullOrWhiteSpace(request.CommunityId)
+        ? Slugify(request.Name)
+        : Slugify(request.CommunityId);
+
+    if (string.IsNullOrWhiteSpace(communityId))
+        return Results.BadRequest(new { message = "CommunityId inválido." });
+
+    var existingCommunity = await service.GetByCommunityIdAsync(communityId);
+    if (existingCommunity != null)
+        return Results.Conflict(new { message = "El id de comunidad ya existe." });
+
+    var community = new Community
+    {
+        CommunityId = communityId,
+        Name = request.Name.Trim(),
+        Title = string.IsNullOrWhiteSpace(request.Title) ? request.Name.Trim() : request.Title.Trim(),
+        Description = request.Description?.Trim() ?? string.Empty,
+        Phone = request.Phone?.Trim() ?? string.Empty,
+        Email = string.IsNullOrWhiteSpace(request.Email) ? currentEmail : request.Email.Trim().ToLowerInvariant(),
+        Open = request.Open,
+        Active = request.Active,
+        Visible = request.Visible,
+        Logo = request.Logo?.Trim() ?? string.Empty,
+        OwnerUserId = currentUserId,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+    };
+
+    var created = await service.CreateAsync(community);
+    return Results.Created($"/communities/{created.Id}", created);
+}).RequireAuthorization();
+
+app.MapPut("/admin/communities/{id}", async (string id, UpdateCommunityRequest request, ClaimsPrincipal user, ICommunityService service) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    var community = await service.GetByIdAsync(id);
+    if (community == null)
+        return Results.NotFound();
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    var currentEmail = user.FindFirstValue(ClaimTypes.Email);
+    var canManage = AuthorizationHelpers.IsSuperAdmin(user) ||
+        (!string.IsNullOrWhiteSpace(currentUserId) && community.OwnerUserId == currentUserId) ||
+        (string.IsNullOrWhiteSpace(community.OwnerUserId) &&
+         !string.IsNullOrWhiteSpace(currentEmail) &&
+         string.Equals(community.Email, currentEmail, StringComparison.OrdinalIgnoreCase));
+
+    if (!canManage)
+        return Results.Forbid();
+
+    if (!string.IsNullOrWhiteSpace(request.Name)) community.Name = request.Name.Trim();
+    if (!string.IsNullOrWhiteSpace(request.Title)) community.Title = request.Title.Trim();
+    if (request.Description != null) community.Description = request.Description.Trim();
+    if (request.Phone != null) community.Phone = request.Phone.Trim();
+    if (!string.IsNullOrWhiteSpace(request.Email)) community.Email = request.Email.Trim().ToLowerInvariant();
+    if (request.Open.HasValue) community.Open = request.Open.Value;
+    if (request.Active.HasValue) community.Active = request.Active.Value;
+    if (request.Visible.HasValue) community.Visible = request.Visible.Value;
+    if (request.Logo != null) community.Logo = request.Logo.Trim();
+    if (!string.IsNullOrWhiteSpace(request.CommunityId)) community.CommunityId = request.CommunityId.Trim().ToLowerInvariant();
+    community.UpdatedAt = DateTime.UtcNow;
+
+    await service.UpdateAsync(id, community);
+    return Results.Ok(community);
+}).RequireAuthorization();
+
+app.MapDelete("/admin/communities/{id}", async (string id, ClaimsPrincipal user, ICommunityService service) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    var community = await service.GetByIdAsync(id);
+    if (community == null)
+        return Results.NotFound();
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    var currentEmail = user.FindFirstValue(ClaimTypes.Email);
+    var canManage = AuthorizationHelpers.IsSuperAdmin(user) ||
+        (!string.IsNullOrWhiteSpace(currentUserId) && community.OwnerUserId == currentUserId) ||
+        (string.IsNullOrWhiteSpace(community.OwnerUserId) &&
+         !string.IsNullOrWhiteSpace(currentEmail) &&
+         string.Equals(community.Email, currentEmail, StringComparison.OrdinalIgnoreCase));
+
+    if (!canManage)
+        return Results.Forbid();
+
+    await service.DeleteAsync(id);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+#endregion
+
+#region Community Requests Management
+
+// GET pending requests for communities owned by the current admin
+app.MapGet("/admin/community-requests", async (ClaimsPrincipal user, IMongoDatabase db) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+
+    var communitiesCol = db.GetCollection<Community>("communities");
+    var requestsCol = db.GetCollection<CommunityRequest>("community_requests");
+    var storesCol = db.GetCollection<Store>("stores");
+
+    // Get communities owned by this admin
+    var ownedCommunities = AuthorizationHelpers.IsSuperAdmin(user)
+        ? await communitiesCol.Find(FilterDefinition<Community>.Empty).ToListAsync()
+        : await communitiesCol.Find(Builders<Community>.Filter.Eq(c => c.OwnerUserId, currentUserId)).ToListAsync();
+
+    if (ownedCommunities.Count == 0)
+        return Results.Ok(new List<object>());
+
+    var communityIds = ownedCommunities.Select(c => c.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+
+    var requests = await requestsCol
+        .Find(Builders<CommunityRequest>.Filter.And(
+            Builders<CommunityRequest>.Filter.In(r => r.CommunityId, communityIds),
+            Builders<CommunityRequest>.Filter.Eq(r => r.Status, "pending")))
+        .SortByDescending(r => r.CreatedAt)
+        .ToListAsync();
+
+    if (requests.Count == 0)
+        return Results.Ok(new List<object>());
+
+    var storeIds = requests.Select(r => r.StoreId).Distinct().ToList();
+    var stores = await storesCol
+        .Find(Builders<Store>.Filter.In(s => s.Id, storeIds))
+        .ToListAsync();
+
+    var storeMap = stores.ToDictionary(s => s.Id ?? string.Empty);
+    var communityMap = ownedCommunities.ToDictionary(c => c.Id ?? string.Empty);
+
+    var result = requests.Select(r =>
+    {
+        storeMap.TryGetValue(r.StoreId, out var store);
+        communityMap.TryGetValue(r.CommunityId, out var community);
+        return new
+        {
+            id = r.Id,
+            communityId = r.CommunityId,
+            communityName = community?.Name ?? string.Empty,
+            communityLogo = community?.Logo ?? string.Empty,
+            storeId = r.StoreId,
+            storeName = store?.Name ?? string.Empty,
+            storeLogo = store?.Logo ?? string.Empty,
+            storeLinkStore = store?.LinkStore ?? string.Empty,
+            status = r.Status,
+            createdAt = r.CreatedAt,
+        };
+    }).ToList();
+
+    return Results.Ok(result);
+}).RequireAuthorization();
+
+// PUT approve or reject a request
+app.MapPut("/admin/community-requests/{requestId}", async (
+    string requestId,
+    ApproveRejectRequest body,
+    ClaimsPrincipal user,
+    IMongoDatabase db,
+    IPlanService planService) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    if (body.Status != "approved" && body.Status != "rejected")
+        return Results.BadRequest(new { message = "Status debe ser 'approved' o 'rejected'." });
+
+    var requestsCol = db.GetCollection<CommunityRequest>("community_requests");
+    var communitiesCol = db.GetCollection<Community>("communities");
+    var communityStoresCol = db.GetCollection<CommunityStore>("community_stores");
+
+    var request = await requestsCol
+        .Find(Builders<CommunityRequest>.Filter.Eq(r => r.Id, requestId))
+        .FirstOrDefaultAsync();
+
+    if (request == null)
+        return Results.NotFound();
+
+    // Verify the admin owns this community
+    var community = await communitiesCol
+        .Find(Builders<Community>.Filter.Eq(c => c.Id, request.CommunityId))
+        .FirstOrDefaultAsync();
+
+    if (community == null)
+        return Results.NotFound();
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    var canManage = AuthorizationHelpers.IsSuperAdmin(user) ||
+        community.OwnerUserId == currentUserId;
+
+    if (!canManage)
+        return Results.Forbid();
+
+    // Update request status
+    await requestsCol.UpdateOneAsync(
+        Builders<CommunityRequest>.Filter.Eq(r => r.Id, requestId),
+        Builders<CommunityRequest>.Update
+            .Set(r => r.Status, body.Status)
+            .Set(r => r.UpdatedAt, DateTime.UtcNow));
+
+    // If approved: check sellers limit then upsert community_stores
+    if (body.Status == "approved")
+    {
+        var sellersLimitCheck = await CheckSellersPerCommunityLimitAsync(request.CommunityId, db);
+        if (!sellersLimitCheck.Allowed)
+            return Results.BadRequest(new { message = sellersLimitCheck.Message, code = "PLAN_LIMIT_SELLERS_PER_COMMUNITY" });
+
+        var filter = Builders<CommunityStore>.Filter.And(
+            Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, request.CommunityId),
+            Builders<CommunityStore>.Filter.Eq(cs => cs.StoreId, request.StoreId));
+
+        var existing = await communityStoresCol.Find(filter).FirstOrDefaultAsync();
+        if (existing != null)
+        {
+            await communityStoresCol.UpdateOneAsync(
+                Builders<CommunityStore>.Filter.Eq(cs => cs.Id, existing.Id),
+                Builders<CommunityStore>.Update
+                    .Set(cs => cs.Status, true)
+                    .Set(cs => cs.UpdatedAt, DateTime.UtcNow));
+        }
+        else
+        {
+            await communityStoresCol.InsertOneAsync(new CommunityStore
+            {
+                CommunityId = request.CommunityId,
+                StoreId = request.StoreId,
+                Status = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+    }
+
+    return Results.Ok(new { success = true });
+}).RequireAuthorization();
+
+#endregion
+
+#region Community Stores Management
+
+app.MapGet("/community-stores/store/{storeId}", async (string storeId, IMongoDatabase db, ICommunityService communityService) =>
+{
+    var communityStoresCol = db.GetCollection<CommunityStore>("community_stores");
+    var communityRequestsCol = db.GetCollection<CommunityRequest>("community_requests");
+
+    var communities = await communityService.GetVisibleWithStatsAsync();
+
+    var storeFilter = Builders<CommunityStore>.Filter.Eq(cs => cs.StoreId, storeId);
+    var storeCommunities = await communityStoresCol.Find(storeFilter).ToListAsync();
+
+    var requestFilter = Builders<CommunityRequest>.Filter.Eq(cr => cr.StoreId, storeId);
+    var storeRequests = await communityRequestsCol.Find(requestFilter).ToListAsync();
+
+    var result = communities.Select(c =>
+    {
+        var cs = storeCommunities.FirstOrDefault(x => x.CommunityId == c.Id);
+        var req = storeRequests.FirstOrDefault(x => x.CommunityId == c.Id);
+        return new StoreCommunityStatusResponse
+        {
+            CommunityId = c.Id,
+            Name = c.Name,
+            Logo = c.Logo,
+            Open = c.Open,
+            Published = cs?.Status == true,
+            RequestStatus = c.Open ? string.Empty : (req?.Status ?? "none"),
+        };
+    }).ToList();
+
+    return Results.Ok(result);
+});
+
+app.MapPost("/community-stores", async (PublishStoreRequest request, ClaimsPrincipal user, IMongoDatabase db, IStoreService storeService, IPlanService planService) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageStoreAsync(request.StoreId, user, storeService))
+        return Results.Forbid();
+
+    var communitiesLimitCheck = await CheckCommunitiesJoinLimitAsync(user, request.CommunityId, includePendingRequests: false, planService, db);
+    if (!communitiesLimitCheck.Allowed)
+        return Results.BadRequest(new { message = communitiesLimitCheck.Message, code = "PLAN_LIMIT_COMMUNITIES" });
+
+    var sellersLimitCheck = await CheckSellersPerCommunityLimitAsync(request.CommunityId, db);
+    if (!sellersLimitCheck.Allowed)
+        return Results.BadRequest(new { message = sellersLimitCheck.Message, code = "PLAN_LIMIT_SELLERS_PER_COMMUNITY" });
+
+    var col = db.GetCollection<CommunityStore>("community_stores");
+
+    var filter = Builders<CommunityStore>.Filter.And(
+        Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, request.CommunityId),
+        Builders<CommunityStore>.Filter.Eq(cs => cs.StoreId, request.StoreId)
+    );
+
+    var existing = await col.Find(filter).FirstOrDefaultAsync();
+
+    if (existing != null)
+    {
+        var update = Builders<CommunityStore>.Update
+            .Set(cs => cs.Status, true)
+            .Set(cs => cs.UpdatedAt, DateTime.UtcNow);
+        await col.UpdateOneAsync(cs => cs.Id == existing.Id, update);
+    }
+    else
+    {
+        await col.InsertOneAsync(new CommunityStore
+        {
+            CommunityId = request.CommunityId,
+            StoreId = request.StoreId,
+            Status = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+    }
+
+    return Results.Ok(new { success = true });
+}).RequireAuthorization();
+
+app.MapDelete("/community-stores", async (string storeId, string communityId, IMongoDatabase db) =>
+{
+    var col = db.GetCollection<CommunityStore>("community_stores");
+
+    var filter = Builders<CommunityStore>.Filter.And(
+        Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, communityId),
+        Builders<CommunityStore>.Filter.Eq(cs => cs.StoreId, storeId)
+    );
+
+    var update = Builders<CommunityStore>.Update
+        .Set(cs => cs.Status, false)
+        .Set(cs => cs.UpdatedAt, DateTime.UtcNow);
+
+    await col.UpdateOneAsync(filter, update);
+    return Results.Ok(new { success = true });
+});
+
+app.MapPost("/community-requests", async (PublishStoreRequest request, ClaimsPrincipal user, IMongoDatabase db, IStoreService storeService, IPlanService planService) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!await AuthorizationHelpers.CanManageStoreAsync(request.StoreId, user, storeService))
+        return Results.Forbid();
+
+    var communitiesLimitCheck = await CheckCommunitiesJoinLimitAsync(user, request.CommunityId, includePendingRequests: true, planService, db);
+    if (!communitiesLimitCheck.Allowed)
+        return Results.BadRequest(new { message = communitiesLimitCheck.Message, code = "PLAN_LIMIT_COMMUNITIES" });
+
+    var col = db.GetCollection<CommunityRequest>("community_requests");
+
+    var filter = Builders<CommunityRequest>.Filter.And(
+        Builders<CommunityRequest>.Filter.Eq(cr => cr.CommunityId, request.CommunityId),
+        Builders<CommunityRequest>.Filter.Eq(cr => cr.StoreId, request.StoreId)
+    );
+
+    var existing = await col.Find(filter).FirstOrDefaultAsync();
+    if (existing != null)
+        return Results.Conflict(new { message = "Ya existe una solicitud para esta comunidad" });
+
+    await col.InsertOneAsync(new CommunityRequest
+    {
+        CommunityId = request.CommunityId,
+        StoreId = request.StoreId,
+        Status = "pending",
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+    });
+
+    return Results.Ok(new { success = true });
+}).RequireAuthorization();
 
 #endregion
 
@@ -326,10 +1091,18 @@ app.MapPost("/auth/login", async (LoginRequest request, IUserService service, IT
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
         return Results.BadRequest(new { message = "Email y contraseña son requeridos" });
 
-    var user = await service.LoginAsync(request);
+    UserResponse? user;
+    try
+    {
+        user = await service.LoginAsync(request);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Json(new { message = ex.Message, code = "EMAIL_NOT_VERIFIED" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
 
     if (user == null)
-        return Results.Unauthorized();
+        return Results.Json(new { message = "Credenciales inválidas" }, statusCode: StatusCodes.Status401Unauthorized);
 
     var authResponse = tokenService.CreateAuthResponse(user);
     return Results.Ok(authResponse);
@@ -402,6 +1175,96 @@ app.MapDelete("/users/{id}", async (string id, ClaimsPrincipal user, IUserServic
     return success ? Results.NoContent() : Results.NotFound();
 }).RequireAuthorization();
 
+app.MapPut("/users/{id}/role", async (string id, UpdateRoleRequest request, ClaimsPrincipal user, IUserService service) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsSuperAdmin(user))
+        return Results.Forbid();
+
+    if (string.IsNullOrEmpty(request.Role))
+        return Results.BadRequest(new { message = "El rol es requerido" });
+
+    var success = await service.UpdateRoleAsync(id, request.Role);
+    return success ? Results.Ok(new { success = true }) : Results.NotFound();
+}).RequireAuthorization();
+
+app.MapGet("/admin/users", async (ClaimsPrincipal user, IUserService service) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsSuperAdmin(user))
+        return Results.Forbid();
+
+    var users = await service.GetAllAsync();
+    return Results.Ok(users);
+}).RequireAuthorization();
+
+app.MapGet("/users/{userId}/plan-usage", async (string userId, ClaimsPrincipal user, IMongoDatabase db) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.CanAccessUser(user, userId))
+        return Results.Forbid();
+
+    var storesCol = db.GetCollection<Store>("stores");
+    var communityStoresCol = db.GetCollection<CommunityStore>("community_stores");
+    var communityRequestsCol = db.GetCollection<CommunityRequest>("community_requests");
+
+    var userStoreIds = await storesCol
+        .Find(Builders<Store>.Filter.And(
+            Builders<Store>.Filter.ElemMatch(s => s.Users, u => u.UserID == userId),
+            Builders<Store>.Filter.Eq(s => s.Active, true)))
+        .Project(s => s.Id)
+        .ToListAsync();
+
+    var storeCount = userStoreIds.Count;
+
+    var trackedCommunityIds = new HashSet<string>();
+
+    if (userStoreIds.Count > 0)
+    {
+        // Publicadas en community_stores (status = true)
+        var publishedIds = await communityStoresCol
+            .Find(Builders<CommunityStore>.Filter.And(
+                Builders<CommunityStore>.Filter.In(cs => cs.StoreId, userStoreIds),
+                Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)))
+            .Project(cs => cs.CommunityId)
+            .ToListAsync();
+
+        foreach (var id in publishedIds.Where(id => !string.IsNullOrWhiteSpace(id)))
+            trackedCommunityIds.Add(id);
+
+        // Solicitudes pendientes en community_requests
+        var pendingIds = await communityRequestsCol
+            .Find(Builders<CommunityRequest>.Filter.And(
+                Builders<CommunityRequest>.Filter.In(cr => cr.StoreId, userStoreIds),
+                Builders<CommunityRequest>.Filter.Eq(cr => cr.Status, "pending")))
+            .Project(cr => cr.CommunityId)
+            .ToListAsync();
+
+        foreach (var id in pendingIds.Where(id => !string.IsNullOrWhiteSpace(id)))
+            trackedCommunityIds.Add(id);
+    }
+
+    // Community admin usage
+    var communitiesCol = db.GetCollection<Community>("communities");
+    var communitiesCreated = await communitiesCol.CountDocumentsAsync(
+        Builders<Community>.Filter.And(
+            Builders<Community>.Filter.Eq(c => c.OwnerUserId, userId),
+            Builders<Community>.Filter.Eq(c => c.Active, true)));
+
+    return Results.Ok(new
+    {
+        storeCount,
+        communitiesJoined = trackedCommunityIds.Count,
+        communitiesCreated = (int)communitiesCreated,
+    });
+}).RequireAuthorization();
+
 app.MapPost("/auth/verify-email/{userId}", async (string userId, IUserService service) =>
 {
     if (string.IsNullOrEmpty(userId))
@@ -413,6 +1276,31 @@ app.MapPost("/auth/verify-email/{userId}", async (string userId, IUserService se
         return Results.NotFound(new { message = "Usuario no encontrado o ya verificado" });
 
     return Results.Ok(new { message = "Email verificado correctamente", emailVerified = true });
+});
+
+app.MapPost("/auth/resend-verification", async (RequestEmailVerificationRequest request, IUserService service) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Email))
+        return Results.BadRequest(new { message = "Email es requerido" });
+
+    bool success;
+    try
+    {
+        success = await service.RequestEmailVerificationAsync(request.Email);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Json(new { message = ex.Message }, statusCode: StatusCodes.Status429TooManyRequests);
+    }
+
+    if (!success)
+        return Results.BadRequest(new { message = "No se pudo procesar el reenvío de verificación" });
+
+    return Results.Ok(new
+    {
+        message = "Si tu cuenta existe y no está verificada, enviamos un correo de verificación",
+        success = true
+    });
 });
 
 app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest request, IUserService service) =>
@@ -504,13 +1392,17 @@ app.MapGet("/stores/global/list", async (IStoreService service) =>
     return Results.Ok(stores);
 });
 
-app.MapPost("/stores", async (CreateStoreRequest request, ClaimsPrincipal user, IStoreService service) =>
+app.MapPost("/stores", async (CreateStoreRequest request, ClaimsPrincipal user, IStoreService service, IPlanService planService, IMongoDatabase db) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
 
     if (string.IsNullOrEmpty(request.Name) || string.IsNullOrEmpty(request.LinkStore))
         return Results.BadRequest(new { message = "Name y LinkStore son requeridos" });
+
+    var storeLimitCheck = await CheckStoreCreationLimitAsync(user, planService, db);
+    if (!storeLimitCheck.Allowed)
+        return Results.BadRequest(new { message = storeLimitCheck.Message, code = "PLAN_LIMIT_STORES" });
 
     request.UserId = AuthorizationHelpers.GetCurrentUserId(user);
 
@@ -578,9 +1470,208 @@ app.MapDelete("/stores/{storeId}/users/{userId}", async (string storeId, string 
 
 #endregion
 
+#region Metrics
+
+app.MapPost("/metrics/track", async (TrackMetricRequest request, IMetricsService service) =>
+{
+    if (string.IsNullOrWhiteSpace(request.EventType))
+        return Results.BadRequest(new { message = "EventType es requerido." });
+
+    try
+    {
+        await service.TrackEventAsync(request);
+        return Results.Ok(new { success = true });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { message = ex.Message });
+    }
+});
+
+app.MapPost("/metrics/track-batch", async (TrackMetricsBatchRequest request, IMetricsService service) =>
+{
+    if (request.Events == null || request.Events.Count == 0)
+        return Results.BadRequest(new { message = "Events es requerido y no puede ser vacío." });
+
+    try
+    {
+        await service.TrackBatchAsync(request.Events);
+        return Results.Ok(new { success = true, total = request.Events.Count });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { message = ex.Message });
+    }
+});
+
+app.MapGet("/metrics/summary", async (
+    ClaimsPrincipal user,
+    IMetricsService service,
+    IStoreService storeService,
+    string? storeId = null,
+    string? communityId = null,
+    DateTime? dateFrom = null,
+    DateTime? dateTo = null) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    var isAdmin = AuthorizationHelpers.IsAdmin(user);
+
+    if (!isAdmin && !string.IsNullOrWhiteSpace(storeId) && !await AuthorizationHelpers.CanManageStoreAsync(storeId, user, storeService))
+        return Results.Forbid();
+
+    var allowedStoreIds = new List<string>();
+    if (!isAdmin)
+    {
+        var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+        if (string.IsNullOrWhiteSpace(currentUserId))
+            return UnauthorizedResult();
+
+        allowedStoreIds = (await storeService.GetByUserIdAsync(currentUserId))
+            .Select(store => store.Id)
+            .ToList();
+    }
+
+    var normalizedDateFrom = dateFrom?.Date;
+    var normalizedDateTo = dateTo?.Date.AddDays(1);
+
+    var summary = await service.GetSummaryAsync(
+        storeId,
+        communityId,
+        normalizedDateFrom,
+        normalizedDateTo,
+        allowedStoreIds,
+        isAdmin);
+
+    return Results.Ok(summary);
+}).RequireAuthorization();
+
+#endregion
+
+#region Sales
+
+app.MapPost("/sales/guest", async (CreateGuestSaleRequest request, ISalesService service) =>
+{
+    if (string.IsNullOrWhiteSpace(request.CustomerName) ||
+        string.IsNullOrWhiteSpace(request.CustomerEmail) ||
+        string.IsNullOrWhiteSpace(request.CustomerPhone) ||
+        string.IsNullOrWhiteSpace(request.CustomerAddress))
+    {
+        return Results.BadRequest(new { message = "Nombre, email, teléfono y dirección son requeridos." });
+    }
+
+    try
+    {
+        var sale = await service.CreateGuestSaleAsync(request);
+        return Results.Created($"/sales/{sale.Id}", sale);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { message = ex.Message });
+    }
+});
+
+app.MapGet("/sales", async (
+    ClaimsPrincipal user,
+    ISalesService service,
+    IStoreService storeService,
+    int pageNumber = 1,
+    int pageSize = 20,
+    string? status = null,
+    string? storeId = null,
+    DateTime? dateFrom = null,
+    DateTime? dateTo = null) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    var isAdmin = AuthorizationHelpers.IsAdmin(user);
+
+    if (!isAdmin && !string.IsNullOrWhiteSpace(storeId) && !await AuthorizationHelpers.CanManageStoreAsync(storeId, user, storeService))
+        return Results.Forbid();
+
+    var allowedStoreIds = new List<string>();
+    if (!isAdmin)
+    {
+        var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+        if (string.IsNullOrWhiteSpace(currentUserId))
+            return UnauthorizedResult();
+
+        allowedStoreIds = (await storeService.GetByUserIdAsync(currentUserId))
+            .Select(store => store.Id)
+            .ToList();
+    }
+
+    try
+    {
+        var normalizedDateFrom = dateFrom?.Date;
+        var normalizedDateTo = dateTo?.Date.AddDays(1);
+
+        var sales = await service.GetPaginatedAsync(
+            pageNumber,
+            pageSize,
+            status,
+            storeId,
+            normalizedDateFrom,
+            normalizedDateTo,
+            allowedStoreIds,
+            isAdmin);
+
+        return Results.Ok(sales);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { message = ex.Message });
+    }
+}).RequireAuthorization();
+
+app.MapGet("/sales/{id}", async (string id, ClaimsPrincipal user, ISalesService service, IStoreService storeService) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    var sale = await service.GetByIdAsync(id);
+    if (sale == null)
+        return Results.NotFound();
+
+    if (!AuthorizationHelpers.IsAdmin(user) && !await AuthorizationHelpers.CanManageStoreAsync(sale.StoreId, user, storeService))
+        return Results.Forbid();
+
+    return Results.Ok(sale);
+}).RequireAuthorization();
+
+app.MapPut("/sales/{id}/status", async (string id, UpdateSaleStatusRequest request, ClaimsPrincipal user, ISalesService service, IStoreService storeService) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    var sale = await service.GetByIdAsync(id);
+    if (sale == null)
+        return Results.NotFound();
+
+    if (!AuthorizationHelpers.IsAdmin(user) && !await AuthorizationHelpers.CanManageStoreAsync(sale.StoreId, user, storeService))
+        return Results.Forbid();
+
+    if (string.IsNullOrWhiteSpace(request.Status))
+        return Results.BadRequest(new { message = "Status es requerido." });
+
+    try
+    {
+        var updatedSale = await service.UpdateStatusAsync(id, request.Status, request.StoreObservation);
+        return Results.Ok(updatedSale);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { message = ex.Message });
+    }
+}).RequireAuthorization();
+
+#endregion
+
 #region Blob Storage
 
-app.MapPost("/images/upload", async (HttpRequest request, ClaimsPrincipal user, IBlobStorageService service, IProductService productService, IStoreService storeService) =>
+app.MapPost("/images/upload", async (HttpRequest request, ClaimsPrincipal user, IBlobStorageService service, IProductService productService, IStoreService storeService, IPlanService planService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -601,6 +1692,18 @@ app.MapPost("/images/upload", async (HttpRequest request, ClaimsPrincipal user, 
 
     if (!await AuthorizationHelpers.CanManageImageAsync(folder, entityId, user, productService, storeService))
         return Results.Forbid();
+
+    if (string.Equals(folder, "product", StringComparison.OrdinalIgnoreCase))
+    {
+        var product = await productService.GetByIdAsync(entityId);
+        if (product == null)
+            return Results.NotFound(new { message = "Producto no encontrado." });
+
+        var targetImagesCount = product.Images.Count + 1;
+        var imagesLimitCheck = await CheckProductImagesLimitAsync(user, entityId, targetImagesCount, productService, planService);
+        if (!imagesLimitCheck.Allowed)
+            return Results.BadRequest(new { message = imagesLimitCheck.Message, code = "PLAN_LIMIT_IMAGES" });
+    }
 
     var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
     var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -667,7 +1770,52 @@ app.MapDelete("/images/by-url", async (string blobUrl, string entityId, ClaimsPr
             .FirstOrDefault(i => string.Equals(i.BlobUrl, blobUrl, StringComparison.OrdinalIgnoreCase));
 
     if (image == null)
-        return Results.NotFound();
+    {
+        // Fallback idempotente solo para imágenes de carpeta "product":
+        // si no existe registro en colección images, igual intentamos remover la URL del producto.
+        var isProductBlob = false;
+        if (Uri.TryCreate(blobUrl, UriKind.Absolute, out var blobUri))
+        {
+            var segments = blobUri.AbsolutePath
+                .Split('/', StringSplitOptions.RemoveEmptyEntries);
+            isProductBlob = segments.Length > 0 &&
+                            string.Equals(segments[0], "product", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var canManageProductImage = false;
+        if (isProductBlob)
+        {
+            try
+            {
+                canManageProductImage = await AuthorizationHelpers.CanManageImageAsync("product", entityId, user, productService, storeService);
+            }
+            catch (FormatException)
+            {
+                canManageProductImage = false;
+            }
+        }
+
+        if (canManageProductImage)
+        {
+            try
+            {
+                await productService.RemoveImageAsync(entityId, blobUrl);
+            }
+            catch (InvalidOperationException)
+            {
+                // Si no está en el producto, la eliminación ya es efectiva (idempotente).
+            }
+            catch (FormatException)
+            {
+                // entityId inválido para producto; evitamos caída y respondemos idempotente.
+            }
+
+            return Results.NoContent();
+        }
+
+        // Respuesta idempotente: si no hay metadata en images, no forzamos 404.
+        return Results.NoContent();
+    }
 
     if (!await AuthorizationHelpers.CanManageImageAsync(image, user, productService, storeService))
         return Results.Forbid();
