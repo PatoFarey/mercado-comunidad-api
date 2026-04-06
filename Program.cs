@@ -73,16 +73,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+var corsOrigins = new List<string>
+{
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:5173",
+    "https://localhost:5173",
+    "https://mercadocomunidad.cl",
+};
+
+var extraOrigins = builder.Configuration["Cors:AllowedOrigins"];
+if (!string.IsNullOrWhiteSpace(extraOrigins))
+    corsOrigins.AddRange(extraOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://localhost:5173",
-                "https://localhost:5173",
-                "https://mercadocomunidad.cl")
+        policy.WithOrigins([.. corsOrigins])
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
