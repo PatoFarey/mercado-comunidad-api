@@ -103,3 +103,8 @@ public class PlanLimitsResponse
     public int CommunitiesCreate { get; set; } = -1;
     public int SellersPerCommunity { get; set; } = -1;
 }
+
+public class ApproveRejectRequest
+{
+    public string Status { get; set; } = string.Empty;
+}
