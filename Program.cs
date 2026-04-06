@@ -112,6 +112,14 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "ok",
+    version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0.0",
+    environment = app.Environment.EnvironmentName,
+    timestamp = DateTime.UtcNow,
+}));
+
 bool IsAuthenticated(ClaimsPrincipal user) => user.Identity?.IsAuthenticated == true;
 
 IResult UnauthorizedResult() => Results.Unauthorized();
