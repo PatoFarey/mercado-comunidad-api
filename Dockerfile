@@ -2,10 +2,10 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 COPY ApiMercadoComunidad.csproj .
-RUN dotnet restore -r linux-x64
+RUN dotnet restore
 
 COPY . .
-RUN dotnet publish -c Release -r linux-x64 --self-contained false -o /app/publish
+RUN dotnet publish -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
