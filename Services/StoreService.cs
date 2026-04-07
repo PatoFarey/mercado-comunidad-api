@@ -128,25 +128,28 @@ public class StoreService : IStoreService
         if (!string.IsNullOrEmpty(request.Dni))
             updateDefinition = updateDefinition.Set(s => s.Dni, request.Dni);
 
+        if (!string.IsNullOrEmpty(request.LinkStore))
+            updateDefinition = updateDefinition.Set(s => s.LinkStore, request.LinkStore.ToLower());
+
         if (!string.IsNullOrEmpty(request.Logo))
             updateDefinition = updateDefinition.Set(s => s.Logo, request.Logo);
 
-        if (!string.IsNullOrEmpty(request.Phone))
+        if (request.Phone != null)
             updateDefinition = updateDefinition.Set(s => s.Phone, request.Phone);
 
-        if (!string.IsNullOrEmpty(request.Email))
+        if (request.Email != null)
             updateDefinition = updateDefinition.Set(s => s.Email, request.Email);
 
-        if (!string.IsNullOrEmpty(request.Facebook))
+        if (request.Facebook != null)
             updateDefinition = updateDefinition.Set(s => s.Facebook, request.Facebook);
 
-        if (!string.IsNullOrEmpty(request.Instagram))
+        if (request.Instagram != null)
             updateDefinition = updateDefinition.Set(s => s.Instagram, request.Instagram);
 
-        if (!string.IsNullOrEmpty(request.Tiktok))
+        if (request.Tiktok != null)
             updateDefinition = updateDefinition.Set(s => s.Tiktok, request.Tiktok);
 
-        if (!string.IsNullOrEmpty(request.Website))
+        if (request.Website != null)
             updateDefinition = updateDefinition.Set(s => s.Website, request.Website);
 
         if (request.Description != null)
@@ -154,6 +157,9 @@ public class StoreService : IStoreService
 
         if (request.IsGlobal.HasValue)
             updateDefinition = updateDefinition.Set(s => s.IsGlobal, request.IsGlobal.Value);
+
+        if (request.Active.HasValue)
+            updateDefinition = updateDefinition.Set(s => s.Active, request.Active.Value);
 
         var result = await _storesCollection.UpdateOneAsync(
             s => s.Id == id,
@@ -165,7 +171,7 @@ public class StoreService : IStoreService
 
         // Actualizar o insertar en community_stores
         string idComunidadGlobal = "6821ef5213989f548f64d5b6";
-        await UpsertCommunityStoreAsync(idComunidadGlobal, id, request.IsGlobal.Value);
+        await UpsertCommunityStoreAsync(idComunidadGlobal, id, request.IsGlobal.GetValueOrDefault());
 
 
         // Sincronizar autom�ticamente despu�s de actualizar
