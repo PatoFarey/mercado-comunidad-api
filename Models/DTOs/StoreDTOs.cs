@@ -21,6 +21,7 @@ public class UpdateStoreRequest
 {
     public string? Name { get; set; }
     public string? Dni { get; set; }
+    public string? LinkStore { get; set; }
     public string? Logo { get; set; }
     public string? Phone { get; set; }
     public string? Email { get; set; }
@@ -30,6 +31,7 @@ public class UpdateStoreRequest
     public string? Website { get; set; }
     public string? Description { get; set; }
     public bool? IsGlobal { get; set; }
+    public bool? Active { get; set; }
 }
 
 public class StoreResponse
