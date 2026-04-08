@@ -171,6 +171,69 @@ public class SalesService : ISalesService
         return await GetByIdAsync(id);
     }
 
+    public async Task<SaleResponse?> UpdateSaleAsync(string id, UpdateSaleRequest request)
+    {
+        var existing = await _salesCollection.Find(s => s.Id == id).FirstOrDefaultAsync();
+        if (existing == null) return null;
+
+        var saleItems = new List<SaleItem>();
+        if (request.Items != null && request.Items.Count > 0)
+        {
+            string? storeId = null;
+            foreach (var item in request.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.ProductId) || item.Quantity <= 0)
+                    throw new InvalidOperationException("Los productos enviados son inválidos.");
+
+                var resolvedProductId = await ResolveProductIdAsync(item.ProductId);
+                var product = await _productService.GetByIdAsync(resolvedProductId);
+                if (product == null || !product.Active)
+                    throw new InvalidOperationException("Uno de los productos ya no está disponible.");
+
+                storeId ??= product.IdStore;
+                if (!string.Equals(storeId, product.IdStore, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Por ahora sólo se puede editar productos de una misma tienda por pedido.");
+
+                saleItems.Add(new SaleItem
+                {
+                    ProductId = product.Id,
+                    ProductTitle = product.Title,
+                    ProductImage = product.Images.FirstOrDefault() ?? string.Empty,
+                    Quantity = item.Quantity,
+                    UnitPrice = product.Price,
+                    LineTotal = product.Price * item.Quantity
+                });
+            }
+        }
+        else
+        {
+            saleItems = existing.Items;
+        }
+
+        var subtotal = saleItems.Sum(i => i.LineTotal);
+        var total = request.Total.HasValue && request.Total.Value >= 0
+            ? request.Total.Value
+            : subtotal;
+        var normalizedStatus = !string.IsNullOrWhiteSpace(request.Status)
+            ? NormalizeStatus(request.Status)
+            : existing.Status;
+
+        var update = Builders<Sale>.Update
+            .Set(s => s.CustomerName, request.CustomerName.Trim())
+            .Set(s => s.CustomerEmail, request.CustomerEmail.Trim())
+            .Set(s => s.CustomerPhone, request.CustomerPhone.Trim())
+            .Set(s => s.CustomerAddress, request.CustomerAddress.Trim())
+            .Set(s => s.Notes, request.Notes?.Trim() ?? string.Empty)
+            .Set(s => s.Status, normalizedStatus)
+            .Set(s => s.Items, saleItems)
+            .Set(s => s.Subtotal, subtotal)
+            .Set(s => s.Total, total)
+            .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+        await _salesCollection.UpdateOneAsync(s => s.Id == id, update);
+        return await GetByIdAsync(id);
+    }
+
     private static string NormalizeStatus(string status)
     {
         var normalized = SaleStatuses.All.FirstOrDefault(item => item.Equals(status?.Trim(), StringComparison.OrdinalIgnoreCase));
