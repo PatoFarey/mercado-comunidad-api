@@ -1545,6 +1545,7 @@ app.MapGet("/metrics/summary", async (
             return UnauthorizedResult();
 
         allowedStoreIds = (await storeService.GetByUserIdAsync(currentUserId))
+            .Where(store => store.Active)
             .Select(store => store.Id)
             .ToList();
     }
@@ -1675,6 +1676,32 @@ app.MapPut("/sales/{id}/status", async (string id, UpdateSaleStatusRequest reque
     try
     {
         var updatedSale = await service.UpdateStatusAsync(id, request.Status, request.StoreObservation);
+        return Results.Ok(updatedSale);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { message = ex.Message });
+    }
+}).RequireAuthorization();
+
+app.MapPut("/sales/{id}", async (string id, UpdateSaleRequest request, ClaimsPrincipal user, ISalesService service, IStoreService storeService) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    var sale = await service.GetByIdAsync(id);
+    if (sale == null)
+        return Results.NotFound();
+
+    if (!AuthorizationHelpers.IsAdmin(user) && !await AuthorizationHelpers.CanManageStoreAsync(sale.StoreId, user, storeService))
+        return Results.Forbid();
+
+    if (string.IsNullOrWhiteSpace(request.CustomerName))
+        return Results.BadRequest(new { message = "El nombre del cliente es requerido." });
+
+    try
+    {
+        var updatedSale = await service.UpdateSaleAsync(id, request);
         return Results.Ok(updatedSale);
     }
     catch (InvalidOperationException ex)
