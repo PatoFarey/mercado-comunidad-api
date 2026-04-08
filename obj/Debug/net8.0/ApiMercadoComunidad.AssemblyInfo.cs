@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ApiMercadoComunidad")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1815514f3dd4083daeb92eed76a9e70fe361c161")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+902e8e66f0a72aee48ee3aadb322ce5230eaa12a")]
 [assembly: System.Reflection.AssemblyProductAttribute("ApiMercadoComunidad")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ApiMercadoComunidad")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
