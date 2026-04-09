@@ -1,7 +1,9 @@
 ﻿using System.Net;
 using System.Net.Mail;
+using System.Text;
 using Microsoft.Extensions.Options;
 using ApiMercadoComunidad.Configuration;
+using ApiMercadoComunidad.Models.DTOs;
 
 namespace ApiMercadoComunidad.Services;
 
@@ -57,6 +59,126 @@ public class EmailService : IEmailService
         var htmlBody = GetPasswordResetEmailTemplate(userName, resetCode);
 
         return await SendEmailAsync(to, subject, htmlBody);
+    }
+
+    public async Task<(bool success, string? errorMessage)> SendOrderConfirmationToBuyerAsync(string to, SaleResponse sale, string storeEmail = "")
+    {
+        var subject = $"Pedido recibido - {sale.StoreName} | Mercado Comunidad";
+        var htmlBody = GetOrderConfirmationBuyerTemplate(sale, storeEmail);
+        return await SendEmailAsync(to, subject, htmlBody);
+    }
+
+    public async Task<(bool success, string? errorMessage)> SendOrderNotificationToSellerAsync(string to, string storeName, SaleResponse sale)
+    {
+        var subject = $"Nuevo pedido recibido en {storeName} | Mercado Comunidad";
+        var htmlBody = GetOrderNotificationSellerTemplate(sale);
+        return await SendEmailAsync(to, subject, htmlBody);
+    }
+
+    private string BuildItemsTable(SaleResponse sale)
+    {
+        var sb = new StringBuilder();
+        sb.Append("<table style='width:100%;border-collapse:collapse;margin:16px 0;'>");
+        sb.Append("<thead><tr style='background:#f3f4f6;'>");
+        sb.Append("<th style='text-align:left;padding:8px 12px;font-size:13px;color:#374151;'>Producto</th>");
+        sb.Append("<th style='text-align:center;padding:8px 12px;font-size:13px;color:#374151;'>Cant.</th>");
+        sb.Append("<th style='text-align:right;padding:8px 12px;font-size:13px;color:#374151;'>Precio</th>");
+        sb.Append("<th style='text-align:right;padding:8px 12px;font-size:13px;color:#374151;'>Subtotal</th>");
+        sb.Append("</tr></thead><tbody>");
+        foreach (var item in sale.Items)
+        {
+            var unitPrice = item.UnitPrice.ToString("N0");
+            var lineTotal = item.LineTotal.ToString("N0");
+            sb.Append($"<tr style='border-bottom:1px solid #e5e7eb;'>");
+            sb.Append($"<td style='padding:10px 12px;font-size:14px;color:#111827;'>{item.ProductTitle}</td>");
+            sb.Append($"<td style='padding:10px 12px;font-size:14px;text-align:center;color:#374151;'>{item.Quantity}</td>");
+            sb.Append($"<td style='padding:10px 12px;font-size:14px;text-align:right;color:#374151;'>${unitPrice}</td>");
+            sb.Append($"<td style='padding:10px 12px;font-size:14px;text-align:right;font-weight:600;color:#111827;'>${lineTotal}</td>");
+            sb.Append("</tr>");
+        }
+        sb.Append($"<tr style='background:#f3f4f6;'>");
+        sb.Append($"<td colspan='3' style='padding:10px 12px;font-size:14px;font-weight:700;color:#111827;text-align:right;'>Total</td>");
+        sb.Append($"<td style='padding:10px 12px;font-size:16px;font-weight:700;color:#2563eb;text-align:right;'>${sale.Total.ToString("N0")}</td>");
+        sb.Append("</tr></tbody></table>");
+        return sb.ToString();
+    }
+
+    private string GetOrderConfirmationBuyerTemplate(SaleResponse sale, string storeEmail = "")
+    {
+        var itemsTable = BuildItemsTable(sale);
+        var notes = string.IsNullOrWhiteSpace(sale.Notes) ? "—" : sale.Notes;
+        var storeContact = string.IsNullOrWhiteSpace(storeEmail)
+            ? sale.StoreName
+            : $"{sale.StoreName} · {storeEmail}";
+
+        return $@"
+<!DOCTYPE html>
+<html lang='es'>
+<head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>
+<body style='font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;'>
+  <div style='background:#f8f9fa;padding:30px;border-radius:10px;'>
+    <h1 style='color:#2563eb;text-align:center;margin-top:0;'>Pedido recibido</h1>
+    <p style='font-size:16px;'>Hola <strong>{sale.CustomerName}</strong>,</p>
+    <p style='font-size:15px;'>Tu pedido en <strong>{sale.StoreName}</strong> fue registrado correctamente. El vendedor se pondrá en contacto contigo para coordinar la entrega y el pago.</p>
+
+    <div style='background:#fff;border-radius:8px;padding:16px;margin:20px 0;border:1px solid #e5e7eb;'>
+      <h3 style='margin-top:0;color:#111827;'>Resumen del pedido</h3>
+      {itemsTable}
+    </div>
+
+    <div style='background:#fff;border-radius:8px;padding:16px;margin:20px 0;border:1px solid #e5e7eb;'>
+      <h3 style='margin-top:0;color:#111827;'>Tus datos de entrega</h3>
+      <p style='margin:4px 0;font-size:14px;'><strong>Nombre:</strong> {sale.CustomerName}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>Email:</strong> {sale.CustomerEmail}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>Teléfono:</strong> {sale.CustomerPhone}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>Dirección:</strong> {sale.CustomerAddress}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>Notas:</strong> {notes}</p>
+    </div>
+
+    <div style='background:#eff6ff;border-left:4px solid #2563eb;padding:12px 16px;border-radius:4px;margin:20px 0;'>
+      <p style='margin:0;font-size:14px;color:#1d4ed8;'><strong>Pago contra entrega o coordinación directa con el vendedor.</strong><br>No se realizó ningún cobro en línea.</p>
+    </div>
+
+    <hr style='border:none;border-top:1px solid #ddd;margin:24px 0;'>
+    <p style='font-size:12px;color:#999;text-align:center;'>{storeContact} · &copy; 2026<br>Enviado por Mercado Comunidad</p>
+  </div>
+</body>
+</html>";
+    }
+
+    private string GetOrderNotificationSellerTemplate(SaleResponse sale)
+    {
+        var itemsTable = BuildItemsTable(sale);
+        var notes = string.IsNullOrWhiteSpace(sale.Notes) ? "—" : sale.Notes;
+
+        return $@"
+<!DOCTYPE html>
+<html lang='es'>
+<head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>
+<body style='font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;'>
+  <div style='background:#f8f9fa;padding:30px;border-radius:10px;'>
+    <h1 style='color:#059669;text-align:center;margin-top:0;'>Nuevo pedido recibido</h1>
+    <p style='font-size:16px;'>Tienes un nuevo pedido en <strong>{sale.StoreName}</strong>. Contacta al comprador para coordinar la entrega.</p>
+
+    <div style='background:#fff;border-radius:8px;padding:16px;margin:20px 0;border:1px solid #e5e7eb;'>
+      <h3 style='margin-top:0;color:#111827;'>Datos del comprador</h3>
+      <p style='margin:4px 0;font-size:14px;'><strong>Nombre:</strong> {sale.CustomerName}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>Email:</strong> {sale.CustomerEmail}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>Teléfono:</strong> {sale.CustomerPhone}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>Dirección:</strong> {sale.CustomerAddress}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>Notas:</strong> {notes}</p>
+    </div>
+
+    <div style='background:#fff;border-radius:8px;padding:16px;margin:20px 0;border:1px solid #e5e7eb;'>
+      <h3 style='margin-top:0;color:#111827;'>Productos pedidos</h3>
+      {itemsTable}
+    </div>
+
+    <hr style='border:none;border-top:1px solid #ddd;margin:24px 0;'>
+    <p style='font-size:12px;color:#999;text-align:center;'>Mercado Comunidad · contacto@mercadocomunidad.cl · &copy; 2026</p>
+  </div>
+</body>
+</html>";
     }
 
     private string GetWelcomeEmailTemplate(string userName, string userId)

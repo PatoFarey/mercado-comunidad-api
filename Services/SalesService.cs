@@ -12,11 +12,15 @@ public class SalesService : ISalesService
     private readonly IMongoCollection<CommunityProduct> _communityProductsCollection;
     private readonly IProductService _productService;
     private readonly IStoreService _storeService;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<SalesService> _logger;
 
     public SalesService(
         IOptions<MongoDbSettings> mongoDbSettings,
         IProductService productService,
-        IStoreService storeService)
+        IStoreService storeService,
+        IEmailService emailService,
+        ILogger<SalesService> logger)
     {
         var mongoClient = new MongoClient(mongoDbSettings.Value.ConnectionString);
         var mongoDatabase = mongoClient.GetDatabase(mongoDbSettings.Value.DatabaseName);
@@ -24,6 +28,8 @@ public class SalesService : ISalesService
         _communityProductsCollection = mongoDatabase.GetCollection<CommunityProduct>("community_products");
         _productService = productService;
         _storeService = storeService;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     public async Task<SaleResponse> CreateGuestSaleAsync(CreateGuestSaleRequest request)
@@ -83,7 +89,12 @@ public class SalesService : ISalesService
         };
 
         await _salesCollection.InsertOneAsync(sale);
-        return MapToResponse(sale);
+        var saleResponse = MapToResponse(sale);
+
+        // Enviar correos (fire-and-forget, no bloquea la respuesta)
+        _ = SendOrderEmailsAsync(saleResponse, store);
+
+        return saleResponse;
     }
 
     public async Task<PaginatedResult<SaleResponse>> GetPaginatedAsync(
@@ -232,6 +243,22 @@ public class SalesService : ISalesService
 
         await _salesCollection.UpdateOneAsync(s => s.Id == id, update);
         return await GetByIdAsync(id);
+    }
+
+    private async Task SendOrderEmailsAsync(SaleResponse sale, StoreResponse store)
+    {
+        // Correo al comprador (incluye email de la tienda si está disponible)
+        var buyerResult = await _emailService.SendOrderConfirmationToBuyerAsync(sale.CustomerEmail, sale, store.Email ?? "");
+        if (!buyerResult.success)
+            _logger.LogWarning("No se pudo enviar correo al comprador {Email}: {Error}", sale.CustomerEmail, buyerResult.errorMessage);
+
+        // Correo al vendedor si la tienda tiene email
+        if (!string.IsNullOrWhiteSpace(store.Email))
+        {
+            var sellerResult = await _emailService.SendOrderNotificationToSellerAsync(store.Email, store.Name, sale);
+            if (!sellerResult.success)
+                _logger.LogWarning("No se pudo enviar correo al vendedor {Email}: {Error}", store.Email, sellerResult.errorMessage);
+        }
     }
 
     private static string NormalizeStatus(string status)

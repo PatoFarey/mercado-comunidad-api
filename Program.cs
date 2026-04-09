@@ -90,7 +90,17 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins([.. corsOrigins])
+        policy
+            .SetIsOriginAllowed(origin =>
+            {
+                if (corsOrigins.Contains(origin)) return true;
+                // Permitir todos los subdominios de mercadocomunidad.cl
+                if (Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                    (uri.Host == "mercadocomunidad.cl" || uri.Host.EndsWith(".mercadocomunidad.cl")) &&
+                    uri.Scheme == "https")
+                    return true;
+                return false;
+            })
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
