@@ -75,6 +75,90 @@ public class EmailService : IEmailService
         return await SendEmailAsync(to, subject, htmlBody);
     }
 
+    public async Task<(bool success, string? errorMessage)> SendCommunityRequestToAdminAsync(string to, string adminName, string storeName, string communityName, string message)
+    {
+        var subject = $"Nueva solicitud de publicación en {communityName} | Mercado Comunidad";
+        var htmlBody = GetCommunityRequestAdminTemplate(adminName, storeName, communityName, message);
+        return await SendEmailAsync(to, subject, htmlBody);
+    }
+
+    public async Task<(bool success, string? errorMessage)> SendCommunityRequestResultToStoreAsync(string to, string storeName, string communityName, bool approved, string reason)
+    {
+        var subject = approved
+            ? $"Solicitud aprobada: {communityName} | Mercado Comunidad"
+            : $"Solicitud rechazada: {communityName} | Mercado Comunidad";
+        var htmlBody = GetCommunityRequestResultTemplate(storeName, communityName, approved, reason);
+        return await SendEmailAsync(to, subject, htmlBody);
+    }
+
+    private string GetCommunityRequestAdminTemplate(string adminName, string storeName, string communityName, string message)
+    {
+        var messageBlock = string.IsNullOrWhiteSpace(message)
+            ? string.Empty
+            : $@"<div style='background:#fffbeb;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:4px;margin:20px 0;'>
+                   <p style='margin:0 0 4px;font-size:13px;font-weight:700;color:#92400e;'>Mensaje del solicitante:</p>
+                   <p style='margin:0;font-size:14px;color:#78350f;'>{message}</p>
+                 </div>";
+
+        return $@"
+<!DOCTYPE html>
+<html lang='es'>
+<head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>
+<body style='font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;'>
+  <div style='background:#f8f9fa;padding:30px;border-radius:10px;'>
+    <h1 style='color:#f97316;text-align:center;margin-top:0;'>Nueva solicitud de publicación</h1>
+    <p style='font-size:16px;'>Hola <strong>{adminName}</strong>,</p>
+    <p style='font-size:15px;'>La tienda <strong>{storeName}</strong> ha solicitado publicarse en tu comunidad <strong>{communityName}</strong>.</p>
+    {messageBlock}
+    <div style='background:#fff;border-radius:8px;padding:16px;margin:20px 0;border:1px solid #e5e7eb;text-align:center;'>
+      <p style='margin:0 0 12px;font-size:14px;color:#374151;'>Ingresa a tu panel de administración para aprobar o rechazar la solicitud.</p>
+      <a href='https://mercadocomunidad.cl/admin/mis-comunidades' style='display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:10px 24px;border-radius:6px;font-weight:700;font-size:14px;'>Ver solicitudes</a>
+    </div>
+    <hr style='border:none;border-top:1px solid #ddd;margin:24px 0;'>
+    <p style='font-size:12px;color:#999;text-align:center;'>Mercado Comunidad · contacto@mercadocomunidad.cl · &copy; 2026</p>
+  </div>
+</body>
+</html>";
+    }
+
+    private string GetCommunityRequestResultTemplate(string storeName, string communityName, bool approved, string reason)
+    {
+        var color = approved ? "#16a34a" : "#dc2626";
+        var title = approved ? "Solicitud aprobada" : "Solicitud rechazada";
+        var message = approved
+            ? $"Tu tienda <strong>{storeName}</strong> fue aprobada para publicarse en <strong>{communityName}</strong>. Ya puedes ir a tu panel y publicar tus productos."
+            : $"Tu solicitud para publicar <strong>{storeName}</strong> en <strong>{communityName}</strong> fue rechazada.";
+
+        var reasonBlock = (!approved && !string.IsNullOrWhiteSpace(reason))
+            ? $@"<div style='background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;border-radius:4px;margin:20px 0;'>
+                   <p style='margin:0 0 4px;font-size:13px;font-weight:700;color:#991b1b;'>Motivo:</p>
+                   <p style='margin:0;font-size:14px;color:#7f1d1d;'>{reason}</p>
+                 </div>"
+            : string.Empty;
+
+        var actionBlock = approved
+            ? $@"<div style='text-align:center;margin:20px 0;'>
+                   <a href='https://mercadocomunidad.cl/admin/comunidades' style='display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 24px;border-radius:6px;font-weight:700;font-size:14px;'>Ir a mis comunidades</a>
+                 </div>"
+            : string.Empty;
+
+        return $@"
+<!DOCTYPE html>
+<html lang='es'>
+<head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>
+<body style='font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;'>
+  <div style='background:#f8f9fa;padding:30px;border-radius:10px;'>
+    <h1 style='color:{color};text-align:center;margin-top:0;'>{title}</h1>
+    <p style='font-size:15px;'>{message}</p>
+    {reasonBlock}
+    {actionBlock}
+    <hr style='border:none;border-top:1px solid #ddd;margin:24px 0;'>
+    <p style='font-size:12px;color:#999;text-align:center;'>Mercado Comunidad · contacto@mercadocomunidad.cl · &copy; 2026</p>
+  </div>
+</body>
+</html>";
+    }
+
     private string BuildItemsTable(SaleResponse sale)
     {
         var sb = new StringBuilder();

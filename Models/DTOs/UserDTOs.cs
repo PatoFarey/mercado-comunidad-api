@@ -107,4 +107,5 @@ public class PlanLimitsResponse
 public class ApproveRejectRequest
 {
     public string Status { get; set; } = string.Empty;
+    public string? Reason { get; set; }
 }
