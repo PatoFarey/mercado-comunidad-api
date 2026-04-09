@@ -23,6 +23,12 @@ public class CommunityRequest
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; }
 
+    [BsonElement("message")]
+    public string Message { get; set; } = string.Empty;
+
+    [BsonElement("reason")]
+    public string Reason { get; set; } = string.Empty;
+
     [BsonElement("updatedAt")]
     public DateTime UpdatedAt { get; set; }
 }

@@ -8,12 +8,14 @@ public class StoreCommunityStatusResponse
     public bool Open { get; set; }
     public bool Published { get; set; }
     public string RequestStatus { get; set; } = string.Empty; // pending | approved | rejected | none
+    public string RequestReason { get; set; } = string.Empty;
 }
 
 public class PublishStoreRequest
 {
     public string StoreId { get; set; } = string.Empty;
     public string CommunityId { get; set; } = string.Empty;
+    public string? Message { get; set; }
 }
 
 public class CommunityRequestResponse

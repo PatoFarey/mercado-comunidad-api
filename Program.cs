@@ -839,6 +839,7 @@ app.MapGet("/admin/community-requests", async (ClaimsPrincipal user, IMongoDatab
             storeLogo = store?.Logo ?? string.Empty,
             storeLinkStore = store?.LinkStore ?? string.Empty,
             status = r.Status,
+            message = r.Message,
             createdAt = r.CreatedAt,
         };
     }).ToList();
@@ -852,7 +853,8 @@ app.MapPut("/admin/community-requests/{requestId}", async (
     ApproveRejectRequest body,
     ClaimsPrincipal user,
     IMongoDatabase db,
-    IPlanService planService) =>
+    IPlanService planService,
+    IEmailService emailService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -894,6 +896,7 @@ app.MapPut("/admin/community-requests/{requestId}", async (
         Builders<CommunityRequest>.Filter.Eq(r => r.Id, requestId),
         Builders<CommunityRequest>.Update
             .Set(r => r.Status, body.Status)
+            .Set(r => r.Reason, body.Reason ?? string.Empty)
             .Set(r => r.UpdatedAt, DateTime.UtcNow));
 
     // If approved: check sellers limit then upsert community_stores
@@ -929,6 +932,32 @@ app.MapPut("/admin/community-requests/{requestId}", async (
         }
     }
 
+    // Fire-and-forget: notify store owner
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            var storesCol = db.GetCollection<Store>("stores");
+            var usersCol = db.GetCollection<User>("users");
+
+            var store = await storesCol.Find(Builders<Store>.Filter.Eq(s => s.Id, request.StoreId)).FirstOrDefaultAsync();
+            if (store == null) return;
+
+            // Find store owner: prefer store.Email, fallback to first user in Users list
+            var storeOwnerEmail = store.Email;
+            if (string.IsNullOrWhiteSpace(storeOwnerEmail) && store.Users.Count > 0)
+            {
+                var ownerId = store.Users.FirstOrDefault(u => u.Role == "owner")?.UserID ?? store.Users[0].UserID;
+                var owner = await usersCol.Find(Builders<User>.Filter.Eq(u => u.Id, ownerId)).FirstOrDefaultAsync();
+                if (owner != null) storeOwnerEmail = owner.Email;
+            }
+
+            if (!string.IsNullOrWhiteSpace(storeOwnerEmail))
+                await emailService.SendCommunityRequestResultToStoreAsync(storeOwnerEmail, store.Name, community.Name, body.Status == "approved", body.Reason ?? string.Empty);
+        }
+        catch { /* silently fail */ }
+    });
+
     return Results.Ok(new { success = true });
 }).RequireAuthorization();
 
@@ -961,6 +990,7 @@ app.MapGet("/community-stores/store/{storeId}", async (string storeId, IMongoDat
             Open = c.Open,
             Published = cs?.Status == true,
             RequestStatus = c.Open ? string.Empty : (req?.Status ?? "none"),
+            RequestReason = (!c.Open && req?.Status == "rejected") ? (req?.Reason ?? string.Empty) : string.Empty,
         };
     }).ToList();
 
@@ -1031,7 +1061,7 @@ app.MapDelete("/community-stores", async (string storeId, string communityId, IM
     return Results.Ok(new { success = true });
 });
 
-app.MapPost("/community-requests", async (PublishStoreRequest request, ClaimsPrincipal user, IMongoDatabase db, IStoreService storeService, IPlanService planService) =>
+app.MapPost("/community-requests", async (PublishStoreRequest request, ClaimsPrincipal user, IMongoDatabase db, IStoreService storeService, IPlanService planService, IEmailService emailService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -1059,8 +1089,42 @@ app.MapPost("/community-requests", async (PublishStoreRequest request, ClaimsPri
         CommunityId = request.CommunityId,
         StoreId = request.StoreId,
         Status = "pending",
+        Message = request.Message ?? string.Empty,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,
+    });
+
+    // Fire-and-forget: notify community admin
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            var communitiesCol = db.GetCollection<Community>("communities");
+            var storesCol = db.GetCollection<Store>("stores");
+            var usersCol = db.GetCollection<User>("users");
+
+            var community = await communitiesCol.Find(Builders<Community>.Filter.Eq(c => c.Id, request.CommunityId)).FirstOrDefaultAsync();
+            var store = await storesCol.Find(Builders<Store>.Filter.Eq(s => s.Id, request.StoreId)).FirstOrDefaultAsync();
+
+            if (community == null || store == null) return;
+
+            // Get admin email: prefer community.Email, fallback to OwnerUserId lookup
+            var adminEmail = community.Email;
+            var adminName = community.Name;
+            if (string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(community.OwnerUserId))
+            {
+                var owner = await usersCol.Find(Builders<User>.Filter.Eq(u => u.Id, community.OwnerUserId)).FirstOrDefaultAsync();
+                if (owner != null)
+                {
+                    adminEmail = owner.Email;
+                    adminName = !string.IsNullOrWhiteSpace(owner.Name) ? owner.Name : owner.Email;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(adminEmail))
+                await emailService.SendCommunityRequestToAdminAsync(adminEmail, adminName, store.Name, community.Name, request.Message ?? string.Empty);
+        }
+        catch { /* silently fail */ }
     });
 
     return Results.Ok(new { success = true });
