@@ -491,7 +491,7 @@ app.MapPost("/products", async (CreateProductRequest request, ClaimsPrincipal us
     return Results.Created($"/products/{product.Id}", product);
 }).RequireAuthorization();
 
-app.MapPut("/products/{id}", async (string id, UpdateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService) =>
+app.MapPut("/products/{id}", async (string id, UpdateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService, IProductSynchronizeService syncService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -507,10 +507,13 @@ app.MapPut("/products/{id}", async (string id, UpdateProductRequest request, Cla
     }
 
     var product = await service.UpdateAsync(id, request);
-    return product is not null ? Results.Ok(product) : Results.NotFound();
+    if (product is null) return Results.NotFound();
+
+    _ = Task.Run(() => syncService.SynchronizeProductAsync(id));
+    return Results.Ok(product);
 }).RequireAuthorization();
 
-app.MapDelete("/products/{id}", async (string id, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
+app.MapDelete("/products/{id}", async (string id, ClaimsPrincipal user, IProductService service, IStoreService storeService, IProductSynchronizeService syncService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -519,10 +522,13 @@ app.MapDelete("/products/{id}", async (string id, ClaimsPrincipal user, IProduct
         return Results.Forbid();
 
     var success = await service.DeleteAsync(id);
-    return success ? Results.NoContent() : Results.NotFound();
+    if (!success) return Results.NotFound();
+
+    _ = Task.Run(() => syncService.SynchronizeProductAsync(id));
+    return Results.NoContent();
 }).RequireAuthorization();
 
-app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService) =>
+app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService, IProductSynchronizeService syncService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -545,7 +551,9 @@ app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, 
     try
     {
         var updated = await service.AddImageAsync(id, request.ImageUrl);
-        return updated is not null ? Results.Ok(updated) : Results.NotFound();
+        if (updated is null) return Results.NotFound();
+        _ = Task.Run(() => syncService.SynchronizeProductAsync(id));
+        return Results.Ok(updated);
     }
     catch (InvalidOperationException ex)
     {
@@ -553,7 +561,7 @@ app.MapPost("/products/{id}/images", async (string id, AddImageRequest request, 
     }
 }).RequireAuthorization();
 
-app.MapDelete("/products/{id}/images", async (string id, string imageUrl, ClaimsPrincipal user, IProductService service, IStoreService storeService) =>
+app.MapDelete("/products/{id}/images", async (string id, string imageUrl, ClaimsPrincipal user, IProductService service, IStoreService storeService, IProductSynchronizeService syncService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -567,7 +575,9 @@ app.MapDelete("/products/{id}/images", async (string id, string imageUrl, Claims
     try
     {
         var product = await service.RemoveImageAsync(id, imageUrl);
-        return product is not null ? Results.Ok(product) : Results.NotFound();
+        if (product is null) return Results.NotFound();
+        _ = Task.Run(() => syncService.SynchronizeProductAsync(id));
+        return Results.Ok(product);
     }
     catch (InvalidOperationException ex)
     {
@@ -575,7 +585,7 @@ app.MapDelete("/products/{id}/images", async (string id, string imageUrl, Claims
     }
 }).RequireAuthorization();
 
-app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService) =>
+app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService, IProductSynchronizeService syncService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -593,7 +603,9 @@ app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesReque
     try
     {
         var product = await service.ReorderImagesAsync(id, request.Images);
-        return product is not null ? Results.Ok(product) : Results.NotFound();
+        if (product is null) return Results.NotFound();
+        _ = Task.Run(() => syncService.SynchronizeProductAsync(id));
+        return Results.Ok(product);
     }
     catch (InvalidOperationException ex)
     {
@@ -997,7 +1009,7 @@ app.MapGet("/community-stores/store/{storeId}", async (string storeId, IMongoDat
     return Results.Ok(result);
 });
 
-app.MapPost("/community-stores", async (PublishStoreRequest request, ClaimsPrincipal user, IMongoDatabase db, IStoreService storeService, IPlanService planService) =>
+app.MapPost("/community-stores", async (PublishStoreRequest request, ClaimsPrincipal user, IMongoDatabase db, IStoreService storeService, IPlanService planService, IProductSynchronizeService syncService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -1041,10 +1053,11 @@ app.MapPost("/community-stores", async (PublishStoreRequest request, ClaimsPrinc
         });
     }
 
+    _ = Task.Run(() => syncService.SynchronizeProductsByStoreAsync(request.StoreId));
     return Results.Ok(new { success = true });
 }).RequireAuthorization();
 
-app.MapDelete("/community-stores", async (string storeId, string communityId, IMongoDatabase db) =>
+app.MapDelete("/community-stores", async (string storeId, string communityId, IMongoDatabase db, IProductSynchronizeService syncService) =>
 {
     var col = db.GetCollection<CommunityStore>("community_stores");
 
@@ -1058,6 +1071,7 @@ app.MapDelete("/community-stores", async (string storeId, string communityId, IM
         .Set(cs => cs.UpdatedAt, DateTime.UtcNow);
 
     await col.UpdateOneAsync(filter, update);
+    _ = Task.Run(() => syncService.SynchronizeProductsByStoreAsync(storeId));
     return Results.Ok(new { success = true });
 });
 
@@ -1636,6 +1650,93 @@ app.MapGet("/metrics/summary", async (
         isAdmin);
 
     return Results.Ok(summary);
+}).RequireAuthorization();
+
+app.MapGet("/admin/community-metrics", async (
+    ClaimsPrincipal user,
+    IMongoDatabase db,
+    DateTime? dateFrom = null,
+    DateTime? dateTo = null,
+    string? communityId = null) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+
+    var communitiesCol = db.GetCollection<Community>("communities");
+    var communityStoresCol = db.GetCollection<CommunityStore>("community_stores");
+    var metricsCol = db.GetCollection<MetricEvent>("metric_events");
+
+    // Get communities owned by this admin
+    var ownedFilter = AuthorizationHelpers.IsSuperAdmin(user)
+        ? FilterDefinition<Community>.Empty
+        : Builders<Community>.Filter.Eq(c => c.OwnerUserId, currentUserId);
+    var ownedCommunities = await communitiesCol.Find(ownedFilter).ToListAsync();
+
+    if (ownedCommunities.Count == 0)
+        return Results.Ok(new { communities = new List<object>(), timeline = new List<object>(), totals = new { communityViews = 0L, totalStores = 0L, activeCommunities = 0 } });
+
+    // Filter to a specific community if requested
+    var targetCommunities = string.IsNullOrWhiteSpace(communityId)
+        ? ownedCommunities
+        : ownedCommunities.Where(c => c.Id == communityId).ToList();
+
+    var targetIds = targetCommunities.Select(c => c.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+
+    // Get store counts per community
+    var storeFilter = Builders<CommunityStore>.Filter.And(
+        Builders<CommunityStore>.Filter.In(cs => cs.CommunityId, targetIds),
+        Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true));
+    var communityStores = await communityStoresCol.Find(storeFilter).ToListAsync();
+    var storeCountMap = communityStores.GroupBy(cs => cs.CommunityId).ToDictionary(g => g.Key, g => g.Count());
+
+    // Get community_view metric events
+    var metricFilters = new List<FilterDefinition<MetricEvent>>
+    {
+        Builders<MetricEvent>.Filter.Eq(m => m.EventType, MetricEventTypes.CommunityView),
+        Builders<MetricEvent>.Filter.In(m => m.CommunityId, targetIds),
+    };
+    if (dateFrom.HasValue) metricFilters.Add(Builders<MetricEvent>.Filter.Gte(m => m.CreatedAt, dateFrom.Value.Date));
+    if (dateTo.HasValue)   metricFilters.Add(Builders<MetricEvent>.Filter.Lt(m => m.CreatedAt, dateTo.Value.Date.AddDays(1)));
+
+    var events = await metricsCol
+        .Find(Builders<MetricEvent>.Filter.And(metricFilters))
+        .Project(m => new { m.CommunityId, m.CreatedAt })
+        .ToListAsync();
+
+    // Per-community breakdown
+    var viewsByCommunity = events.GroupBy(e => e.CommunityId).ToDictionary(g => g.Key ?? string.Empty, g => (long)g.Count());
+
+    var communitiesResult = targetCommunities.Select(c => new
+    {
+        id = c.Id,
+        communityId = c.CommunityId,
+        name = c.Name,
+        logo = c.Logo,
+        active = c.Active,
+        storeCount = storeCountMap.TryGetValue(c.Id ?? string.Empty, out var sc) ? sc : 0,
+        communityViews = viewsByCommunity.TryGetValue(c.Id ?? string.Empty, out var cv) ? cv : 0L,
+    }).OrderByDescending(c => c.communityViews).ToList();
+
+    // Daily timeline
+    var timeline = events
+        .GroupBy(e => e.CreatedAt.Date)
+        .OrderBy(g => g.Key)
+        .Select(g => new { date = g.Key, communityViews = (long)g.Count() })
+        .ToList();
+
+    var totals = new
+    {
+        communityViews = (long)events.Count,
+        totalStores = (long)communityStores.Count,
+        activeCommunities = targetCommunities.Count(c => c.Active),
+    };
+
+    return Results.Ok(new { communities = communitiesResult, timeline, totals });
 }).RequireAuthorization();
 
 #endregion
