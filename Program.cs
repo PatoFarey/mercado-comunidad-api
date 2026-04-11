@@ -629,10 +629,41 @@ app.MapGet("/communities/{id}", async (string id, ICommunityService service) =>
     return community is not null ? Results.Ok(community) : Results.NotFound();
 });
 
-app.MapGet("/communities/by-community-id/{communityId}", async (string communityId, ICommunityService service) =>
+app.MapGet("/communities/by-community-id/{communityId}", async (string communityId, ICommunityService service, IUserService userService, IPlanService planService) =>
 {
     var community = await service.GetByCommunityIdAsync(communityId);
-    return community is not null ? Results.Ok(community) : Results.NotFound();
+    if (community is null) return Results.NotFound();
+
+    var planTier = "free";
+    if (!string.IsNullOrWhiteSpace(community.OwnerUserId))
+    {
+        var owner = await userService.GetByIdAsync(community.OwnerUserId);
+        if (owner?.PlanId is not null)
+        {
+            var plan = await planService.GetByIdAsync(owner.PlanId);
+            if (plan is not null)
+                planTier = plan.Tier;
+        }
+    }
+
+    return Results.Ok(new
+    {
+        community.Id,
+        community.CommunityId,
+        community.Name,
+        community.Title,
+        community.Description,
+        community.Phone,
+        community.Email,
+        community.Open,
+        community.Active,
+        community.Visible,
+        community.Logo,
+        community.OwnerUserId,
+        community.CreatedAt,
+        community.UpdatedAt,
+        OwnerPlanTier = planTier,
+    });
 });
 
 app.MapGet("/communities/active", async (ICommunityService service) =>
