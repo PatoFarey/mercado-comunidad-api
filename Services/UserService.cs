@@ -219,6 +219,15 @@ public class UserService : IUserService
                 return false;
 
             var filter = Builders<User>.Filter.Eq(u => u.Id, userId);
+
+            var user = await _usersCollection.Find(filter).FirstOrDefaultAsync();
+            if (user == null)
+                return false;
+
+            // Already verified — treat as success so clicking the link twice doesn't show an error
+            if (user.EmailVerified)
+                return true;
+
             var update = Builders<User>.Update
                 .Set(u => u.EmailVerified, true)
                 .Set(u => u.UpdatedAt, DateTime.UtcNow);
