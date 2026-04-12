@@ -294,6 +294,19 @@
           "lib/net5.0/SharpCompress.dll": {}
         }
       },
+      "SixLabors.Fonts/2.0.4": {
+        "type": "package",
+        "compile": {
+          "lib/net6.0/SixLabors.Fonts.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0/SixLabors.Fonts.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "SixLabors.ImageSharp/3.1.9": {
         "type": "package",
         "compile": {
@@ -308,6 +321,23 @@
         },
         "build": {
           "build/SixLabors.ImageSharp.props": {}
+        }
+      },
+      "SixLabors.ImageSharp.Drawing/2.1.4": {
+        "type": "package",
+        "dependencies": {
+          "SixLabors.Fonts": "2.0.4",
+          "SixLabors.ImageSharp": "3.1.5"
+        },
+        "compile": {
+          "lib/net6.0/SixLabors.ImageSharp.Drawing.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0/SixLabors.ImageSharp.Drawing.dll": {
+            "related": ".xml"
+          }
         }
       },
       "Snappier/1.0.0": {
@@ -983,6 +1013,21 @@
         "sharpcompress.nuspec"
       ]
     },
+    "SixLabors.Fonts/2.0.4": {
+      "sha512": "4+NKz8W36injp98lmmM07ncp08HAK8c6FZz8vLoKxRPfJeEVWpBHlLYEbQa5rcqKKYqxUv/RVCrb8XcPhfMKUQ==",
+      "type": "package",
+      "path": "sixlabors.fonts/2.0.4",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE",
+        "lib/net6.0/SixLabors.Fonts.dll",
+        "lib/net6.0/SixLabors.Fonts.xml",
+        "sixlabors.fonts.128.png",
+        "sixlabors.fonts.2.0.4.nupkg.sha512",
+        "sixlabors.fonts.nuspec"
+      ]
+    },
     "SixLabors.ImageSharp/3.1.9": {
       "sha512": "8yY4Bcxgw5u7xLWFXb2mK4fbX+0JYJ7eyM19n0inj/cgcHAuIAge982Eiy8vTHT9Zow4HvKJaZKRFBhTNFqD4A==",
       "type": "package",
@@ -997,6 +1042,21 @@
         "sixlabors.imagesharp.128.png",
         "sixlabors.imagesharp.3.1.9.nupkg.sha512",
         "sixlabors.imagesharp.nuspec"
+      ]
+    },
+    "SixLabors.ImageSharp.Drawing/2.1.4": {
+      "sha512": "p4VwtAABggDUhUS5zXldCZHVGfjJl76+SrBHY4biNQ8+890igFK6RL87qIv9GqvEjMcYOar1sPkf2iMQ6uq9/g==",
+      "type": "package",
+      "path": "sixlabors.imagesharp.drawing/2.1.4",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE",
+        "lib/net6.0/SixLabors.ImageSharp.Drawing.dll",
+        "lib/net6.0/SixLabors.ImageSharp.Drawing.xml",
+        "sixlabors.imagesharp.drawing.128.png",
+        "sixlabors.imagesharp.drawing.2.1.4.nupkg.sha512",
+        "sixlabors.imagesharp.drawing.nuspec"
       ]
     },
     "Snappier/1.0.0": {
@@ -1406,11 +1466,12 @@
       "Microsoft.AspNetCore.Authentication.JwtBearer >= 8.0.14",
       "MongoDB.Driver >= 3.5.2",
       "SixLabors.ImageSharp >= 3.1.9",
+      "SixLabors.ImageSharp.Drawing >= 2.1.4",
       "Swashbuckle.AspNetCore >= 10.1.0"
     ]
   },
   "packageFolders": {
-    "C:\\Users\\CristianFarias\\.nuget\\packages\\": {},
+    "C:\\Users\\crist\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
@@ -1419,14 +1480,14 @@
       "projectUniqueName": "C:\\Codes\\MercadoComunidad\\mercado-comunidad-api\\ApiMercadoComunidad.csproj",
       "projectName": "ApiMercadoComunidad",
       "projectPath": "C:\\Codes\\MercadoComunidad\\mercado-comunidad-api\\ApiMercadoComunidad.csproj",
-      "packagesPath": "C:\\Users\\CristianFarias\\.nuget\\packages\\",
+      "packagesPath": "C:\\Users\\crist\\.nuget\\packages\\",
       "outputPath": "C:\\Codes\\MercadoComunidad\\mercado-comunidad-api\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\CristianFarias\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\crist\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
@@ -1435,6 +1496,7 @@
       ],
       "sources": {
         "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "C:\\Program Files\\dotnet\\library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -1453,7 +1515,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "10.0.100"
+      "SdkAnalysisLevel": "9.0.300"
     },
     "frameworks": {
       "net8.0": {
@@ -1479,6 +1541,10 @@
             "target": "Package",
             "version": "[3.1.9, )"
           },
+          "SixLabors.ImageSharp.Drawing": {
+            "target": "Package",
+            "version": "[2.1.4, )"
+          },
           "Swashbuckle.AspNetCore": {
             "target": "Package",
             "version": "[10.1.0, )"
@@ -1503,7 +1569,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.100/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.305/PortableRuntimeIdentifierGraph.json"
       }
     }
   },
@@ -1512,7 +1578,7 @@
       "code": "NU1902",
       "level": "Warning",
       "warningLevel": 1,
-      "message": "Package 'SixLabors.ImageSharp' 3.1.9 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-rxmq-m78w-7wmc",
+      "message": "El paquete \"SixLabors.ImageSharp\" 3.1.9 tiene una vulnerabilidad de gravedad moderada conocida, https://github.com/advisories/GHSA-rxmq-m78w-7wmc",
       "libraryId": "SixLabors.ImageSharp",
       "targetGraphs": [
         "net8.0"

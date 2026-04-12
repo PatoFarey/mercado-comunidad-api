@@ -54,6 +54,12 @@ builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddSingleton<ISalesService, SalesService>();
 builder.Services.AddSingleton<IMetricsService, MetricsService>();
 builder.Services.AddSingleton<IPlanService, PlanService>();
+builder.Services.AddSingleton<IOgImageService, OgImageService>();
+builder.Services.AddHttpClient("og", c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(6);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("MercadoComunidad-OG/1.0");
+});
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -129,6 +135,24 @@ app.MapGet("/health", () => Results.Ok(new
     environment = app.Environment.EnvironmentName,
     timestamp = DateTime.UtcNow,
 }));
+
+app.MapGet("/og/product/{id}", async (string id, IOgImageService ogService, HttpContext ctx) =>
+{
+    try
+    {
+        var png = await ogService.GenerateProductOgImageAsync(id);
+        ctx.Response.Headers["Cache-Control"] = "public, max-age=3600";
+        return Results.Bytes(png, "image/png");
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch
+    {
+        return Results.StatusCode(500);
+    }
+});
 
 bool IsAuthenticated(ClaimsPrincipal user) => user.Identity?.IsAuthenticated == true;
 

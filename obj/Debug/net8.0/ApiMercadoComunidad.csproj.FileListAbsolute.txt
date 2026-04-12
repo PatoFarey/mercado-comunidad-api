@@ -127,7 +127,6 @@ C:\Codes\MercadoComunidad\mercado-comunidad-api\obj\Debug\net8.0\staticwebassets
 C:\Codes\MercadoComunidad\mercado-comunidad-api\obj\Debug\net8.0\staticwebassets.build.json.cache
 C:\Codes\MercadoComunidad\mercado-comunidad-api\obj\Debug\net8.0\staticwebassets.development.json
 C:\Codes\MercadoComunidad\mercado-comunidad-api\obj\Debug\net8.0\staticwebassets.build.endpoints.json
-C:\Codes\MercadoComunidad\mercado-comunidad-api\obj\Debug\net8.0\swae.build.ex.cache
 C:\Codes\MercadoComunidad\mercado-comunidad-api\obj\Debug\net8.0\ApiMerca.B5DF6605.Up2Date
 C:\Codes\MercadoComunidad\mercado-comunidad-api\obj\Debug\net8.0\ApiMercadoComunidad.dll
 C:\Codes\MercadoComunidad\mercado-comunidad-api\obj\Debug\net8.0\refint\ApiMercadoComunidad.dll
@@ -138,3 +137,5 @@ C:\Codes\MercadoComunidad\mercado-comunidad-api\bin\Debug\net8.0\AWSSDK.Core.dll
 C:\Codes\MercadoComunidad\mercado-comunidad-api\bin\Debug\net8.0\AWSSDK.S3.dll
 C:\Codes\MercadoComunidad\mercado-comunidad-api\bin\Debug\net8.0\SixLabors.ImageSharp.dll
 C:\Codes\MercadoComunidad\mercado-comunidad-api\bin\Debug\net8.0\appsettings.Development.json
+C:\Codes\MercadoComunidad\mercado-comunidad-api\bin\Debug\net8.0\SixLabors.Fonts.dll
+C:\Codes\MercadoComunidad\mercado-comunidad-api\bin\Debug\net8.0\SixLabors.ImageSharp.Drawing.dll
