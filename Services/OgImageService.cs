@@ -158,6 +158,25 @@ public class OgImageService : IOgImageService
         return ms.ToArray();
     }
 
+    public async Task<ProductOgMeta> GetProductMetaAsync(string productId)
+    {
+        var product = await _products.GetByIdAsync(productId)
+            ?? throw new KeyNotFoundException($"Producto '{productId}' no encontrado.");
+
+        var store = await _stores.GetByIdAsync(product.IdStore);
+        var storeName = store?.Name is { Length: > 0 } name ? $" · {name}" : string.Empty;
+
+        var title = $"{product.Title}{storeName}";
+
+        var description = !string.IsNullOrWhiteSpace(product.Description)
+            ? Truncate(product.Description, 160)
+            : product.Price > 0
+                ? $"{product.Title} por {FormatPrice(product.Price)}"
+                : product.Title;
+
+        return new ProductOgMeta(title, description);
+    }
+
     private static string FormatPrice(decimal price)
     {
         var formatted = price.ToString("N0", new CultureInfo("es-CL"));

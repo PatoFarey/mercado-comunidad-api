@@ -154,6 +154,58 @@ app.MapGet("/og/product/{id}", async (string id, IOgImageService ogService, Http
     }
 });
 
+app.MapGet("/og/html/product/{id}", async (string id, IOgImageService ogService, IConfiguration config, HttpRequest req) =>
+{
+    try
+    {
+        var meta = await ogService.GetProductMetaAsync(id);
+        var frontendUrl = config["FrontendUrl"]?.TrimEnd('/') ?? "https://mercadocomunidad.cl";
+        var apiBase = $"{req.Scheme}://{req.Host}";
+        var productUrl = $"{frontendUrl}/product/{id}";
+        var imageUrl = $"{apiBase}/og/product/{id}";
+
+        var title = System.Net.WebUtility.HtmlEncode(meta.Title);
+        var description = System.Net.WebUtility.HtmlEncode(meta.Description);
+
+        var html = $"""
+            <!DOCTYPE html>
+            <html lang="es">
+            <head>
+              <meta charset="UTF-8" />
+              <title>{title} — MercadoComunidad</title>
+              <meta property="og:type" content="product" />
+              <meta property="og:site_name" content="MercadoComunidad" />
+              <meta property="og:title" content="{title}" />
+              <meta property="og:description" content="{description}" />
+              <meta property="og:image" content="{imageUrl}" />
+              <meta property="og:image:width" content="1200" />
+              <meta property="og:image:height" content="630" />
+              <meta property="og:url" content="{productUrl}" />
+              <meta name="twitter:card" content="summary_large_image" />
+              <meta name="twitter:title" content="{title}" />
+              <meta name="twitter:description" content="{description}" />
+              <meta name="twitter:image" content="{imageUrl}" />
+              <meta http-equiv="refresh" content="0;url={productUrl}" />
+            </head>
+            <body>
+              <p><a href="{productUrl}">{title}</a></p>
+              <script>window.location.replace('{productUrl}');</script>
+            </body>
+            </html>
+            """;
+
+        return Results.Content(html, "text/html; charset=utf-8");
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch
+    {
+        return Results.StatusCode(500);
+    }
+});
+
 bool IsAuthenticated(ClaimsPrincipal user) => user.Identity?.IsAuthenticated == true;
 
 IResult UnauthorizedResult() => Results.Unauthorized();
