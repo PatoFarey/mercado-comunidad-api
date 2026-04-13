@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Text;
+using System.Xml.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -135,6 +136,72 @@ app.MapGet("/health", () => Results.Ok(new
     environment = app.Environment.EnvironmentName,
     timestamp = DateTime.UtcNow,
 }));
+
+app.MapGet("/sitemap.xml", async (IMongoDatabase db, IConfiguration config, HttpContext ctx) =>
+{
+    var frontendUrl = (config["FrontendUrl"] ?? "https://mercadocomunidad.cl").TrimEnd('/');
+
+    var storesCollection = db.GetCollection<Store>("stores");
+    var productsCollection = db.GetCollection<Products>("products");
+
+    var activeStores = await storesCollection
+        .Find(s => s.Active)
+        .Project(s => new { s.Id, s.LinkStore, s.UpdatedAt })
+        .ToListAsync();
+
+    var activeStoreIds = activeStores
+        .Select(s => s.Id)
+        .Where(id => !string.IsNullOrWhiteSpace(id))
+        .ToList();
+
+    var activeProductsFilter = activeStoreIds.Count > 0
+        ? Builders<Products>.Filter.And(
+            Builders<Products>.Filter.Eq(p => p.Active, true),
+            Builders<Products>.Filter.In(p => p.IdStore, activeStoreIds))
+        : Builders<Products>.Filter.Eq(p => p.Active, true);
+
+    var activeProducts = await productsCollection
+        .Find(activeProductsFilter)
+        .Project(p => new { p.Id, p.UpdatedAt })
+        .ToListAsync();
+
+    var entries = new List<(string Url, DateTime LastMod)>
+    {
+        ($"{frontendUrl}/", DateTime.UtcNow),
+        ($"{frontendUrl}/communities", DateTime.UtcNow),
+    };
+
+    entries.AddRange(activeStores
+        .Where(s => !string.IsNullOrWhiteSpace(s.LinkStore))
+        .Select(s => ($"{frontendUrl}/store/{Uri.EscapeDataString(s.LinkStore.Trim().ToLowerInvariant())}", s.UpdatedAt)));
+
+    entries.AddRange(activeProducts
+        .Where(p => !string.IsNullOrWhiteSpace(p.Id))
+        .Select(p => ($"{frontendUrl}/product/{p.Id}", p.UpdatedAt)));
+
+    var dedupedEntries = entries
+        .GroupBy(e => e.Url, StringComparer.OrdinalIgnoreCase)
+        .Select(g => g.OrderByDescending(e => e.LastMod).First())
+        .ToList();
+
+    XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
+    var xml = new XDocument(
+        new XDeclaration("1.0", "UTF-8", "yes"),
+        new XElement(ns + "urlset",
+            dedupedEntries.Select(entry =>
+                new XElement(ns + "url",
+                    new XElement(ns + "loc", entry.Url),
+                    new XElement(ns + "lastmod", entry.LastMod.ToUniversalTime().ToString("yyyy-MM-dd")),
+                    new XElement(ns + "changefreq", "daily"),
+                    new XElement(ns + "priority", entry.Url.Contains("/product/") ? "0.7" : entry.Url.Contains("/store/") ? "0.8" : "1.0")
+                )
+            )
+        )
+    );
+
+    ctx.Response.Headers.CacheControl = "public,max-age=900";
+    return Results.Content(xml.ToString(), "application/xml; charset=utf-8");
+});
 
 app.MapGet("/og/product/{id}", async (string id, IOgImageService ogService, HttpContext ctx) =>
 {
