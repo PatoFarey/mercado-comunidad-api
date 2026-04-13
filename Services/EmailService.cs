@@ -1,4 +1,4 @@
-Ôªøusing System.Net;
+using System.Net;
 using System.Net.Mail;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -47,7 +47,7 @@ public class EmailService : IEmailService
 
     public async Task<(bool success, string? errorMessage)> SendWelcomeEmailAsync(string to, string userName, string userId)
     {
-        var subject = "¬°Bienvenido a Mercado Comunidad!";
+        var subject = "°Bienvenido a Feria Comunidad!";
         var htmlBody = GetWelcomeEmailTemplate(userName, userId);
 
         return await SendEmailAsync(to, subject, htmlBody);
@@ -55,7 +55,7 @@ public class EmailService : IEmailService
 
     public async Task<(bool success, string? errorMessage)> SendPasswordResetCodeAsync(string to, string userName, string resetCode)
     {
-        var subject = "Recuperaci√≥n de contrase√±a - Mercado Comunidad";
+        var subject = "RecuperaciÛn de contraseÒa - Feria Comunidad";
         var htmlBody = GetPasswordResetEmailTemplate(userName, resetCode);
 
         return await SendEmailAsync(to, subject, htmlBody);
@@ -63,21 +63,21 @@ public class EmailService : IEmailService
 
     public async Task<(bool success, string? errorMessage)> SendOrderConfirmationToBuyerAsync(string to, SaleResponse sale, string storeEmail = "")
     {
-        var subject = $"Pedido recibido - {sale.StoreName} | Mercado Comunidad";
+        var subject = $"Pedido recibido - {sale.StoreName} | Feria Comunidad";
         var htmlBody = GetOrderConfirmationBuyerTemplate(sale, storeEmail);
         return await SendEmailAsync(to, subject, htmlBody);
     }
 
     public async Task<(bool success, string? errorMessage)> SendOrderNotificationToSellerAsync(string to, string storeName, SaleResponse sale)
     {
-        var subject = $"Nuevo pedido recibido en {storeName} | Mercado Comunidad";
+        var subject = $"Nuevo pedido recibido en {storeName} | Feria Comunidad";
         var htmlBody = GetOrderNotificationSellerTemplate(sale);
         return await SendEmailAsync(to, subject, htmlBody);
     }
 
     public async Task<(bool success, string? errorMessage)> SendCommunityRequestToAdminAsync(string to, string adminName, string storeName, string communityName, string message)
     {
-        var subject = $"Nueva solicitud de publicaci√≥n en {communityName} | Mercado Comunidad";
+        var subject = $"Nueva solicitud de publicaciÛn en {communityName} | Feria Comunidad";
         var htmlBody = GetCommunityRequestAdminTemplate(adminName, storeName, communityName, message);
         return await SendEmailAsync(to, subject, htmlBody);
     }
@@ -85,8 +85,8 @@ public class EmailService : IEmailService
     public async Task<(bool success, string? errorMessage)> SendCommunityRequestResultToStoreAsync(string to, string storeName, string communityName, bool approved, string reason)
     {
         var subject = approved
-            ? $"Solicitud aprobada: {communityName} | Mercado Comunidad"
-            : $"Solicitud rechazada: {communityName} | Mercado Comunidad";
+            ? $"Solicitud aprobada: {communityName} | Feria Comunidad"
+            : $"Solicitud rechazada: {communityName} | Feria Comunidad";
         var htmlBody = GetCommunityRequestResultTemplate(storeName, communityName, approved, reason);
         return await SendEmailAsync(to, subject, htmlBody);
     }
@@ -106,16 +106,16 @@ public class EmailService : IEmailService
 <head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>
 <body style='font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;'>
   <div style='background:#f8f9fa;padding:30px;border-radius:10px;'>
-    <h1 style='color:#f97316;text-align:center;margin-top:0;'>Nueva solicitud de publicaci√≥n</h1>
+    <h1 style='color:#f97316;text-align:center;margin-top:0;'>Nueva solicitud de publicaciÛn</h1>
     <p style='font-size:16px;'>Hola <strong>{adminName}</strong>,</p>
     <p style='font-size:15px;'>La tienda <strong>{storeName}</strong> ha solicitado publicarse en tu comunidad <strong>{communityName}</strong>.</p>
     {messageBlock}
     <div style='background:#fff;border-radius:8px;padding:16px;margin:20px 0;border:1px solid #e5e7eb;text-align:center;'>
-      <p style='margin:0 0 12px;font-size:14px;color:#374151;'>Ingresa a tu panel de administraci√≥n para aprobar o rechazar la solicitud.</p>
-      <a href='https://mercadocomunidad.cl/admin/mis-comunidades' style='display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:10px 24px;border-radius:6px;font-weight:700;font-size:14px;'>Ver solicitudes</a>
+      <p style='margin:0 0 12px;font-size:14px;color:#374151;'>Ingresa a tu panel de administraciÛn para aprobar o rechazar la solicitud.</p>
+      <a href='https://feriacomunidad.cl/admin/mis-comunidades' style='display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:10px 24px;border-radius:6px;font-weight:700;font-size:14px;'>Ver solicitudes</a>
     </div>
     <hr style='border:none;border-top:1px solid #ddd;margin:24px 0;'>
-    <p style='font-size:12px;color:#999;text-align:center;'>Mercado Comunidad ¬∑ contacto@mercadocomunidad.cl ¬∑ &copy; 2026</p>
+    <p style='font-size:12px;color:#999;text-align:center;'>Feria Comunidad ∑ contacto@feriacomunidad.cl ∑ &copy; 2026</p>
   </div>
 </body>
 </html>";
@@ -138,7 +138,7 @@ public class EmailService : IEmailService
 
         var actionBlock = approved
             ? $@"<div style='text-align:center;margin:20px 0;'>
-                   <a href='https://mercadocomunidad.cl/admin/comunidades' style='display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 24px;border-radius:6px;font-weight:700;font-size:14px;'>Ir a mis comunidades</a>
+                   <a href='https://feriacomunidad.cl/admin/comunidades' style='display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 24px;border-radius:6px;font-weight:700;font-size:14px;'>Ir a mis comunidades</a>
                  </div>"
             : string.Empty;
 
@@ -153,7 +153,7 @@ public class EmailService : IEmailService
     {reasonBlock}
     {actionBlock}
     <hr style='border:none;border-top:1px solid #ddd;margin:24px 0;'>
-    <p style='font-size:12px;color:#999;text-align:center;'>Mercado Comunidad ¬∑ contacto@mercadocomunidad.cl ¬∑ &copy; 2026</p>
+    <p style='font-size:12px;color:#999;text-align:center;'>Feria Comunidad ∑ contacto@feriacomunidad.cl ∑ &copy; 2026</p>
   </div>
 </body>
 </html>";
@@ -190,10 +190,10 @@ public class EmailService : IEmailService
     private string GetOrderConfirmationBuyerTemplate(SaleResponse sale, string storeEmail = "")
     {
         var itemsTable = BuildItemsTable(sale);
-        var notes = string.IsNullOrWhiteSpace(sale.Notes) ? "‚Äî" : sale.Notes;
+        var notes = string.IsNullOrWhiteSpace(sale.Notes) ? "ó" : sale.Notes;
         var storeContact = string.IsNullOrWhiteSpace(storeEmail)
             ? sale.StoreName
-            : $"{sale.StoreName} ¬∑ {storeEmail}";
+            : $"{sale.StoreName} ∑ {storeEmail}";
 
         return $@"
 <!DOCTYPE html>
@@ -203,7 +203,7 @@ public class EmailService : IEmailService
   <div style='background:#f8f9fa;padding:30px;border-radius:10px;'>
     <h1 style='color:#2563eb;text-align:center;margin-top:0;'>Pedido recibido</h1>
     <p style='font-size:16px;'>Hola <strong>{sale.CustomerName}</strong>,</p>
-    <p style='font-size:15px;'>Tu pedido en <strong>{sale.StoreName}</strong> fue registrado correctamente. El vendedor se pondr√° en contacto contigo para coordinar la entrega y el pago.</p>
+    <p style='font-size:15px;'>Tu pedido en <strong>{sale.StoreName}</strong> fue registrado correctamente. El vendedor se pondr· en contacto contigo para coordinar la entrega y el pago.</p>
 
     <div style='background:#fff;border-radius:8px;padding:16px;margin:20px 0;border:1px solid #e5e7eb;'>
       <h3 style='margin-top:0;color:#111827;'>Resumen del pedido</h3>
@@ -214,17 +214,17 @@ public class EmailService : IEmailService
       <h3 style='margin-top:0;color:#111827;'>Tus datos de entrega</h3>
       <p style='margin:4px 0;font-size:14px;'><strong>Nombre:</strong> {sale.CustomerName}</p>
       <p style='margin:4px 0;font-size:14px;'><strong>Email:</strong> {sale.CustomerEmail}</p>
-      <p style='margin:4px 0;font-size:14px;'><strong>Tel√©fono:</strong> {sale.CustomerPhone}</p>
-      <p style='margin:4px 0;font-size:14px;'><strong>Direcci√≥n:</strong> {sale.CustomerAddress}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>TelÈfono:</strong> {sale.CustomerPhone}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>DirecciÛn:</strong> {sale.CustomerAddress}</p>
       <p style='margin:4px 0;font-size:14px;'><strong>Notas:</strong> {notes}</p>
     </div>
 
     <div style='background:#eff6ff;border-left:4px solid #2563eb;padding:12px 16px;border-radius:4px;margin:20px 0;'>
-      <p style='margin:0;font-size:14px;color:#1d4ed8;'><strong>Pago contra entrega o coordinaci√≥n directa con el vendedor.</strong><br>No se realiz√≥ ning√∫n cobro en l√≠nea.</p>
+      <p style='margin:0;font-size:14px;color:#1d4ed8;'><strong>Pago contra entrega o coordinaciÛn directa con el vendedor.</strong><br>No se realizÛ ning˙n cobro en lÌnea.</p>
     </div>
 
     <hr style='border:none;border-top:1px solid #ddd;margin:24px 0;'>
-    <p style='font-size:12px;color:#999;text-align:center;'>{storeContact} ¬∑ &copy; 2026<br>Enviado por Mercado Comunidad</p>
+    <p style='font-size:12px;color:#999;text-align:center;'>{storeContact} ∑ &copy; 2026<br>Enviado por Feria Comunidad</p>
   </div>
 </body>
 </html>";
@@ -233,7 +233,7 @@ public class EmailService : IEmailService
     private string GetOrderNotificationSellerTemplate(SaleResponse sale)
     {
         var itemsTable = BuildItemsTable(sale);
-        var notes = string.IsNullOrWhiteSpace(sale.Notes) ? "‚Äî" : sale.Notes;
+        var notes = string.IsNullOrWhiteSpace(sale.Notes) ? "ó" : sale.Notes;
 
         return $@"
 <!DOCTYPE html>
@@ -248,8 +248,8 @@ public class EmailService : IEmailService
       <h3 style='margin-top:0;color:#111827;'>Datos del comprador</h3>
       <p style='margin:4px 0;font-size:14px;'><strong>Nombre:</strong> {sale.CustomerName}</p>
       <p style='margin:4px 0;font-size:14px;'><strong>Email:</strong> {sale.CustomerEmail}</p>
-      <p style='margin:4px 0;font-size:14px;'><strong>Tel√©fono:</strong> {sale.CustomerPhone}</p>
-      <p style='margin:4px 0;font-size:14px;'><strong>Direcci√≥n:</strong> {sale.CustomerAddress}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>TelÈfono:</strong> {sale.CustomerPhone}</p>
+      <p style='margin:4px 0;font-size:14px;'><strong>DirecciÛn:</strong> {sale.CustomerAddress}</p>
       <p style='margin:4px 0;font-size:14px;'><strong>Notas:</strong> {notes}</p>
     </div>
 
@@ -259,7 +259,7 @@ public class EmailService : IEmailService
     </div>
 
     <hr style='border:none;border-top:1px solid #ddd;margin:24px 0;'>
-    <p style='font-size:12px;color:#999;text-align:center;'>Mercado Comunidad ¬∑ contacto@mercadocomunidad.cl ¬∑ &copy; 2026</p>
+    <p style='font-size:12px;color:#999;text-align:center;'>Feria Comunidad ∑ contacto@feriacomunidad.cl ∑ &copy; 2026</p>
   </div>
 </body>
 </html>";
@@ -267,7 +267,7 @@ public class EmailService : IEmailService
 
     private string GetWelcomeEmailTemplate(string userName, string userId)
     {
-        var verificationLink = $"https://mercadocomunidad.cl/verificarmail/{userId}";
+        var verificationLink = $"https://feriacomunidad.cl/verificarmail/{userId}";
 
         return $@"
 <!DOCTYPE html>
@@ -275,11 +275,11 @@ public class EmailService : IEmailService
 <head>
     <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>Bienvenido a Mercado Comunidad</title>
+    <title>Bienvenido a Feria Comunidad</title>
 </head>
 <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>
     <div style='background-color: #f8f9fa; padding: 30px; border-radius: 10px;'>
-        <h1 style='color: #007bff; text-align: center;'>¬°Bienvenido a Mercado Comunidad!</h1>
+        <h1 style='color: #007bff; text-align: center;'>°Bienvenido a Feria Comunidad!</h1>
         
         <p style='font-size: 16px;'>Hola <strong>{userName}</strong>,</p>
         
@@ -289,7 +289,7 @@ public class EmailService : IEmailService
         
         <div style='background-color: #28a745; color: white; padding: 15px; border-radius: 5px; text-align: center; margin: 30px 0;'>
             <a href='{verificationLink}' style='color: white; text-decoration: none; font-size: 18px; font-weight: bold;'>
-                ‚úì VERIFICAR E-MAIL
+                ? VERIFICAR E-MAIL
             </a>
         </div>
         
@@ -300,7 +300,7 @@ public class EmailService : IEmailService
         
         <hr style='border: none; border-top: 1px solid #ddd; margin: 30px 0;'>
         
-        <p>En Mercado Comunidad, podr√°s:</p>
+        <p>En Feria Comunidad, podr·s:</p>
         <ul>
             <li><strong>Tu Tienda:</strong> Crear tu tienda y publicar productos.</li>   
             <li><strong>PRONTO !! Tu Comunidad:</strong> Crear tu comunidad e invitar a otros a unirse y vender.</li>
@@ -314,8 +314,8 @@ public class EmailService : IEmailService
         <hr style='border: none; border-top: 1px solid #ddd; margin: 30px 0;'>
         
         <p style='font-size: 12px; color: #999; text-align: center;'>
-            Mercado Comunidad<br>
-            contacto@mercadocomunidad.cl<br>
+            Feria Comunidad<br>
+            contacto@feriacomunidad.cl<br>
             &copy; 2026 Todos los derechos reservados
         </p>
     </div>
@@ -331,40 +331,40 @@ public class EmailService : IEmailService
 <head>
     <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>Recuperaci√≥n de Contrase√±a</title>
+    <title>RecuperaciÛn de ContraseÒa</title>
 </head>
 <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;'>
     <div style='background-color: #f8f9fa; padding: 30px; border-radius: 10px;'>
-        <h1 style='color: #dc3545; text-align: center;'>üîê Recuperaci√≥n de Contrase√±a</h1>
+        <h1 style='color: #dc3545; text-align: center;'>?? RecuperaciÛn de ContraseÒa</h1>
         
         <p style='font-size: 16px;'>Hola <strong>{userName}</strong>,</p>
         
         <p style='font-size: 16px;'>
-            Hemos recibido una solicitud para restablecer la contrase√±a de tu cuenta en Mercado Comunidad.
+            Hemos recibido una solicitud para restablecer la contraseÒa de tu cuenta en Feria Comunidad.
         </p>
         
         <div style='background-color: #fff; border: 3px dashed #007bff; padding: 20px; border-radius: 10px; text-align: center; margin: 30px 0;'>
-            <p style='font-size: 14px; color: #666; margin-bottom: 10px;'>Tu c√≥digo de verificaci√≥n es:</p>
+            <p style='font-size: 14px; color: #666; margin-bottom: 10px;'>Tu cÛdigo de verificaciÛn es:</p>
             <h2 style='font-size: 48px; font-weight: bold; color: #007bff; letter-spacing: 8px; margin: 10px 0;'>{resetCode}</h2>
-            <p style='font-size: 12px; color: #999; margin-top: 10px;'>Este c√≥digo expira en 30 minutos</p>
+            <p style='font-size: 12px; color: #999; margin-top: 10px;'>Este cÛdigo expira en 30 minutos</p>
         </div>
         
         <div style='background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;'>
             <p style='margin: 0; font-size: 14px;'>
-                <strong>‚ö†Ô∏è Importante:</strong> Si no solicitaste restablecer tu contrase√±a, ignora este correo. 
-                Tu cuenta permanecer√° segura.
+                <strong>?? Importante:</strong> Si no solicitaste restablecer tu contraseÒa, ignora este correo. 
+                Tu cuenta permanecer· segura.
             </p>
         </div>
         
         <p style='font-size: 14px; color: #666;'>
-            Para restablecer tu contrase√±a, ingresa este c√≥digo en la p√°gina de recuperaci√≥n junto con tu nueva contrase√±a.
+            Para restablecer tu contraseÒa, ingresa este cÛdigo en la p·gina de recuperaciÛn junto con tu nueva contraseÒa.
         </p>
         
         <hr style='border: none; border-top: 1px solid #ddd; margin: 30px 0;'>
         
         <p style='font-size: 12px; color: #999; text-align: center;'>
-            Mercado Comunidad<br>
-            contacto@mercadocomunidad.cl<br>
+            Feria Comunidad<br>
+            contacto@feriacomunidad.cl<br>
             &copy; 2026 Todos los derechos reservados
         </p>
     </div>

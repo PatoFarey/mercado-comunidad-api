@@ -1,4 +1,4 @@
-Ôªøusing ApiMercadoComunidad.Configuration;
+using ApiMercadoComunidad.Configuration;
 using ApiMercadoComunidad.Models;
 using ApiMercadoComunidad.Models.DTOs;
 using ApiMercadoComunidad.Security;
@@ -25,7 +25,7 @@ builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
 
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()
-    ?? throw new InvalidOperationException("La secci√≥n Jwt es requerida.");
+    ?? throw new InvalidOperationException("La secciÛn Jwt es requerida.");
 
 if (string.IsNullOrWhiteSpace(jwtSettings.Key))
     throw new InvalidOperationException("Jwt:Key es requerido.");
@@ -59,7 +59,7 @@ builder.Services.AddSingleton<IOgImageService, OgImageService>();
 builder.Services.AddHttpClient("og", c =>
 {
     c.Timeout = TimeSpan.FromSeconds(6);
-    c.DefaultRequestHeaders.UserAgent.ParseAdd("MercadoComunidad-OG/1.0");
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("FeriaComunidad-OG/1.0");
 });
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -86,7 +86,7 @@ var corsOrigins = new List<string>
     "http://localhost:3001",
     "http://localhost:5173",
     "https://localhost:5173",
-    "https://mercadocomunidad.cl",
+    "https://feriacomunidad.cl",
 };
 
 var extraOrigins = builder.Configuration["Cors:AllowedOrigins"];
@@ -101,9 +101,9 @@ builder.Services.AddCors(options =>
             .SetIsOriginAllowed(origin =>
             {
                 if (corsOrigins.Contains(origin)) return true;
-                // Permitir todos los subdominios de mercadocomunidad.cl
+                // Permitir todos los subdominios de feriacomunidad.cl
                 if (Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
-                    (uri.Host == "mercadocomunidad.cl" || uri.Host.EndsWith(".mercadocomunidad.cl")) &&
+                    (uri.Host == "feriacomunidad.cl" || uri.Host.EndsWith(".feriacomunidad.cl")) &&
                     uri.Scheme == "https")
                     return true;
                 return false;
@@ -139,7 +139,7 @@ app.MapGet("/health", () => Results.Ok(new
 
 app.MapGet("/sitemap.xml", async (IMongoDatabase db, IConfiguration config, HttpContext ctx) =>
 {
-    var frontendUrl = (config["FrontendUrl"] ?? "https://mercadocomunidad.cl").TrimEnd('/');
+    var frontendUrl = (config["FrontendUrl"] ?? "https://feriacomunidad.cl").TrimEnd('/');
 
     var storesCollection = db.GetCollection<Store>("stores");
     var productsCollection = db.GetCollection<Products>("products");
@@ -226,7 +226,7 @@ app.MapGet("/og/html/product/{id}", async (string id, IOgImageService ogService,
     try
     {
         var meta = await ogService.GetProductMetaAsync(id);
-        var frontendUrl = config["FrontendUrl"]?.TrimEnd('/') ?? "https://mercadocomunidad.cl";
+        var frontendUrl = config["FrontendUrl"]?.TrimEnd('/') ?? "https://feriacomunidad.cl";
         var apiBase = $"{req.Scheme}://{req.Host}";
         var productUrl = $"{frontendUrl}/product/{id}";
         var imageUrl = $"{apiBase}/og/product/{id}";
@@ -239,9 +239,9 @@ app.MapGet("/og/html/product/{id}", async (string id, IOgImageService ogService,
             <html lang="es">
             <head>
               <meta charset="UTF-8" />
-              <title>{title} ‚Äî MercadoComunidad</title>
+              <title>{title} ó FeriaComunidad</title>
               <meta property="og:type" content="product" />
-              <meta property="og:site_name" content="MercadoComunidad" />
+              <meta property="og:site_name" content="FeriaComunidad" />
               <meta property="og:title" content="{title}" />
               <meta property="og:description" content="{description}" />
               <meta property="og:image" content="{imageUrl}" />
@@ -502,7 +502,7 @@ async Task<(bool Allowed, string Message)> CheckSellersPerCommunityLimitAsync(
             Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)));
 
     return current >= limit
-        ? (false, $"Esta feria/comunidad alcanz√≥ el l√≠mite de {limit} tienda(s) permitidas por su plan.")
+        ? (false, $"Esta feria/comunidad alcanzÛ el lÌmite de {limit} tienda(s) permitidas por su plan.")
         : (true, string.Empty);
 }
 
@@ -737,7 +737,7 @@ app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesReque
         return Results.Forbid();
 
     if (request.Images == null || !request.Images.Any())
-        return Results.BadRequest(new { message = "Images es requerido y no puede estar vac√≠o" });
+        return Results.BadRequest(new { message = "Images es requerido y no puede estar vacÌo" });
 
     var imagesLimitCheck = await CheckProductImagesLimitAsync(user, id, request.Images.Count, service, planService);
     if (!imagesLimitCheck.Allowed)
@@ -870,7 +870,7 @@ app.MapPost("/admin/communities", async (CreateCommunityRequest request, ClaimsP
         : Slugify(request.CommunityId);
 
     if (string.IsNullOrWhiteSpace(communityId))
-        return Results.BadRequest(new { message = "CommunityId inv√°lido." });
+        return Results.BadRequest(new { message = "CommunityId inv·lido." });
 
     var existingCommunity = await service.GetByCommunityIdAsync(communityId);
     if (existingCommunity != null)
@@ -1347,12 +1347,12 @@ app.MapGet("/community-products/product/{id}", async (string id, ICommunityProdu
 app.MapPost("/auth/register", async (RegisterRequest request, IUserService service, IEmailService emailService, ITokenService tokenService) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
-        return Results.BadRequest(new { message = "Email y contrase√±a son requeridos" });
+        return Results.BadRequest(new { message = "Email y contraseÒa son requeridos" });
 
     var user = await service.RegisterAsync(request);
 
     if (user == null)
-        return Results.Conflict(new { message = "El email ya est√° registrado" });
+        return Results.Conflict(new { message = "El email ya est· registrado" });
 
     _ = Task.Run(async () =>
     {
@@ -1367,7 +1367,7 @@ app.MapPost("/auth/register", async (RegisterRequest request, IUserService servi
 app.MapPost("/auth/login", async (LoginRequest request, IUserService service, ITokenService tokenService) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
-        return Results.BadRequest(new { message = "Email y contrase√±a son requeridos" });
+        return Results.BadRequest(new { message = "Email y contraseÒa son requeridos" });
 
     UserResponse? user;
     try
@@ -1380,7 +1380,7 @@ app.MapPost("/auth/login", async (LoginRequest request, IUserService service, IT
     }
 
     if (user == null)
-        return Results.Json(new { message = "Credenciales inv√°lidas" }, statusCode: StatusCodes.Status401Unauthorized);
+        return Results.Json(new { message = "Credenciales inv·lidas" }, statusCode: StatusCodes.Status401Unauthorized);
 
     var authResponse = tokenService.CreateAuthResponse(user);
     return Results.Ok(authResponse);
@@ -1431,14 +1431,14 @@ app.MapPost("/users/{id}/change-password", async (string id, ChangePasswordReque
         return Results.Forbid();
 
     if (string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
-        return Results.BadRequest(new { message = "Las contrase√±as son requeridas" });
+        return Results.BadRequest(new { message = "Las contraseÒas son requeridas" });
 
     var success = await service.ChangePasswordAsync(id, request);
 
     if (!success)
-        return Results.BadRequest(new { message = "Contrase√±a actual incorrecta" });
+        return Results.BadRequest(new { message = "ContraseÒa actual incorrecta" });
 
-    return Results.Ok(new { message = "Contrase√±a actualizada correctamente" });
+    return Results.Ok(new { message = "ContraseÒa actualizada correctamente" });
 }).RequireAuthorization();
 
 app.MapDelete("/users/{id}", async (string id, ClaimsPrincipal user, IUserService service) =>
@@ -1572,11 +1572,11 @@ app.MapPost("/auth/resend-verification", async (RequestEmailVerificationRequest 
     }
 
     if (!success)
-        return Results.BadRequest(new { message = "No se pudo procesar el reenv√≠o de verificaci√≥n" });
+        return Results.BadRequest(new { message = "No se pudo procesar el reenvÌo de verificaciÛn" });
 
     return Results.Ok(new
     {
-        message = "Si tu cuenta existe y no est√° verificada, enviamos un correo de verificaci√≥n",
+        message = "Si tu cuenta existe y no est· verificada, enviamos un correo de verificaciÛn",
         success = true
     });
 });
@@ -1590,7 +1590,7 @@ app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest r
 
     return Results.Ok(new
     {
-        message = "Si el email est√° registrado, recibir√°s un c√≥digo de recuperaci√≥n",
+        message = "Si el email est· registrado, recibir·s un cÛdigo de recuperaciÛn",
         success = true
     });
 });
@@ -1598,30 +1598,30 @@ app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest r
 app.MapPost("/auth/validate-reset-code", async (ValidateResetCodeRequest request, IUserService service) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Code))
-        return Results.BadRequest(new { message = "Email y c√≥digo son requeridos" });
+        return Results.BadRequest(new { message = "Email y cÛdigo son requeridos" });
 
     var isValid = await service.ValidateResetCodeAsync(request.Email, request.Code);
 
     if (!isValid)
-        return Results.BadRequest(new { message = "C√≥digo inv√°lido o expirado", valid = false });
+        return Results.BadRequest(new { message = "CÛdigo inv·lido o expirado", valid = false });
 
-    return Results.Ok(new { message = "C√≥digo v√°lido", valid = true });
+    return Results.Ok(new { message = "CÛdigo v·lido", valid = true });
 });
 
 app.MapPost("/auth/reset-password", async (ResetPasswordRequest request, IUserService service) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Code) || string.IsNullOrEmpty(request.NewPassword))
-        return Results.BadRequest(new { message = "Email, c√≥digo y nueva contrase√±a son requeridos" });
+        return Results.BadRequest(new { message = "Email, cÛdigo y nueva contraseÒa son requeridos" });
 
     if (request.NewPassword.Length < 6)
-        return Results.BadRequest(new { message = "La contrase√±a debe tener al menos 6 caracteres" });
+        return Results.BadRequest(new { message = "La contraseÒa debe tener al menos 6 caracteres" });
 
     var success = await service.ResetPasswordAsync(request.Email, request.Code, request.NewPassword);
 
     if (!success)
-        return Results.BadRequest(new { message = "No se pudo restablecer la contrase√±a. C√≥digo inv√°lido o expirado" });
+        return Results.BadRequest(new { message = "No se pudo restablecer la contraseÒa. CÛdigo inv·lido o expirado" });
 
-    return Results.Ok(new { message = "Contrase√±a restablecida correctamente", success = true });
+    return Results.Ok(new { message = "ContraseÒa restablecida correctamente", success = true });
 });
 
 #endregion
@@ -1769,7 +1769,7 @@ app.MapPost("/metrics/track", async (TrackMetricRequest request, IMetricsService
 app.MapPost("/metrics/track-batch", async (TrackMetricsBatchRequest request, IMetricsService service) =>
 {
     if (request.Events == null || request.Events.Count == 0)
-        return Results.BadRequest(new { message = "Events es requerido y no puede ser vac√≠o." });
+        return Results.BadRequest(new { message = "Events es requerido y no puede ser vacÌo." });
 
     try
     {
@@ -1924,7 +1924,7 @@ app.MapPost("/sales/guest", async (CreateGuestSaleRequest request, ISalesService
         string.IsNullOrWhiteSpace(request.CustomerPhone) ||
         string.IsNullOrWhiteSpace(request.CustomerAddress))
     {
-        return Results.BadRequest(new { message = "Nombre, email, tel√©fono y direcci√≥n son requeridos." });
+        return Results.BadRequest(new { message = "Nombre, email, telÈfono y direcciÛn son requeridos." });
     }
 
     try
@@ -2077,7 +2077,7 @@ app.MapPost("/images/upload", async (HttpRequest request, ClaimsPrincipal user, 
     var entityId = form["entityId"].ToString();
 
     if (file == null || file.Length == 0)
-        return Results.BadRequest(new { message = "No se ha enviado ning√∫n archivo" });
+        return Results.BadRequest(new { message = "No se ha enviado ning˙n archivo" });
 
     if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(entityId))
         return Results.BadRequest(new { message = "Folder y EntityId son requeridos" });
@@ -2163,8 +2163,8 @@ app.MapDelete("/images/by-url", async (string blobUrl, string entityId, ClaimsPr
 
     if (image == null)
     {
-        // Fallback idempotente solo para im√°genes de carpeta "product":
-        // si no existe registro en colecci√≥n images, igual intentamos remover la URL del producto.
+        // Fallback idempotente solo para im·genes de carpeta "product":
+        // si no existe registro en colecciÛn images, igual intentamos remover la URL del producto.
         var isProductBlob = false;
         if (Uri.TryCreate(blobUrl, UriKind.Absolute, out var blobUri))
         {
@@ -2195,11 +2195,11 @@ app.MapDelete("/images/by-url", async (string blobUrl, string entityId, ClaimsPr
             }
             catch (InvalidOperationException)
             {
-                // Si no est√° en el producto, la eliminaci√≥n ya es efectiva (idempotente).
+                // Si no est· en el producto, la eliminaciÛn ya es efectiva (idempotente).
             }
             catch (FormatException)
             {
-                // entityId inv√°lido para producto; evitamos ca√≠da y respondemos idempotente.
+                // entityId inv·lido para producto; evitamos caÌda y respondemos idempotente.
             }
 
             return Results.NoContent();

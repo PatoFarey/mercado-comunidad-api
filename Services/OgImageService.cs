@@ -104,11 +104,11 @@ public class OgImageService : IOgImageService
             var priceFont = _font.CreateFont(56, FontStyle.Bold);
             var catFont = _font.CreateFont(16, FontStyle.Regular);
 
-            // "mercadocomunidad.cl"
+            // "feriacomunidad.cl"
             ctx.DrawText(new RichTextOptions(brandFont)
             {
                 Origin = new PointF(TextX, 30),
-            }, "mercadocomunidad.cl", MutedColor);
+            }, "feriacomunidad.cl", MutedColor);
 
             // Nombre de la tienda
             if (!string.IsNullOrWhiteSpace(storeName))
