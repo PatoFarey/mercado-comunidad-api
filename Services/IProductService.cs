@@ -15,7 +15,7 @@ public interface IProductService
     Task<ProductResponse?> UpdateAsync(string id, UpdateProductRequest request);
     Task<bool> DeleteAsync(string id);
 
-    // Nuevos mÈtodos para gestiÛn de im·genes
+    // Nuevos m√©todos para gesti√≥n de im√°genes
     Task<ProductResponse?> AddImageAsync(string id, string imageUrl);
     Task<ProductResponse?> RemoveImageAsync(string id, string imageUrl);
     Task<ProductResponse?> ReorderImagesAsync(string id, List<string> images);

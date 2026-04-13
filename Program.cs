@@ -25,7 +25,7 @@ builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
 
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()
-    ?? throw new InvalidOperationException("La sección Jwt es requerida.");
+    ?? throw new InvalidOperationException("La secciÃ³n Jwt es requerida.");
 
 if (string.IsNullOrWhiteSpace(jwtSettings.Key))
     throw new InvalidOperationException("Jwt:Key es requerido.");
@@ -239,7 +239,7 @@ app.MapGet("/og/html/product/{id}", async (string id, IOgImageService ogService,
             <html lang="es">
             <head>
               <meta charset="UTF-8" />
-              <title>{title} — FeriaComunidad</title>
+              <title>{title} Â· FeriaComunidad</title>
               <meta property="og:type" content="product" />
               <meta property="og:site_name" content="FeriaComunidad" />
               <meta property="og:title" content="{title}" />
@@ -502,7 +502,7 @@ async Task<(bool Allowed, string Message)> CheckSellersPerCommunityLimitAsync(
             Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)));
 
     return current >= limit
-        ? (false, $"Esta feria/comunidad alcanzó el límite de {limit} tienda(s) permitidas por su plan.")
+        ? (false, $"Esta feria/comunidad alcanzÃ³ el lÃ­mite de {limit} tienda(s) permitidas por su plan.")
         : (true, string.Empty);
 }
 
@@ -737,7 +737,7 @@ app.MapPut("/products/{id}/images/reorder", async (string id, ReorderImagesReque
         return Results.Forbid();
 
     if (request.Images == null || !request.Images.Any())
-        return Results.BadRequest(new { message = "Images es requerido y no puede estar vacío" });
+        return Results.BadRequest(new { message = "Images es requerido y no puede estar vacÃ­o" });
 
     var imagesLimitCheck = await CheckProductImagesLimitAsync(user, id, request.Images.Count, service, planService);
     if (!imagesLimitCheck.Allowed)
@@ -870,7 +870,7 @@ app.MapPost("/admin/communities", async (CreateCommunityRequest request, ClaimsP
         : Slugify(request.CommunityId);
 
     if (string.IsNullOrWhiteSpace(communityId))
-        return Results.BadRequest(new { message = "CommunityId inválido." });
+        return Results.BadRequest(new { message = "CommunityId invÃ¡lido." });
 
     var existingCommunity = await service.GetByCommunityIdAsync(communityId);
     if (existingCommunity != null)
@@ -1347,12 +1347,12 @@ app.MapGet("/community-products/product/{id}", async (string id, ICommunityProdu
 app.MapPost("/auth/register", async (RegisterRequest request, IUserService service, IEmailService emailService, ITokenService tokenService) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
-        return Results.BadRequest(new { message = "Email y contraseña son requeridos" });
+        return Results.BadRequest(new { message = "Email y contraseÃ±a son requeridos" });
 
     var user = await service.RegisterAsync(request);
 
     if (user == null)
-        return Results.Conflict(new { message = "El email ya está registrado" });
+        return Results.Conflict(new { message = "El email ya estÃ¡ registrado" });
 
     _ = Task.Run(async () =>
     {
@@ -1367,7 +1367,7 @@ app.MapPost("/auth/register", async (RegisterRequest request, IUserService servi
 app.MapPost("/auth/login", async (LoginRequest request, IUserService service, ITokenService tokenService) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
-        return Results.BadRequest(new { message = "Email y contraseña son requeridos" });
+        return Results.BadRequest(new { message = "Email y contraseÃ±a son requeridos" });
 
     UserResponse? user;
     try
@@ -1380,7 +1380,7 @@ app.MapPost("/auth/login", async (LoginRequest request, IUserService service, IT
     }
 
     if (user == null)
-        return Results.Json(new { message = "Credenciales inválidas" }, statusCode: StatusCodes.Status401Unauthorized);
+        return Results.Json(new { message = "Credenciales invÃ¡lidas" }, statusCode: StatusCodes.Status401Unauthorized);
 
     var authResponse = tokenService.CreateAuthResponse(user);
     return Results.Ok(authResponse);
@@ -1431,14 +1431,14 @@ app.MapPost("/users/{id}/change-password", async (string id, ChangePasswordReque
         return Results.Forbid();
 
     if (string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
-        return Results.BadRequest(new { message = "Las contraseñas son requeridas" });
+        return Results.BadRequest(new { message = "Las contraseÃ±as son requeridas" });
 
     var success = await service.ChangePasswordAsync(id, request);
 
     if (!success)
-        return Results.BadRequest(new { message = "Contraseña actual incorrecta" });
+        return Results.BadRequest(new { message = "ContraseÃ±a actual incorrecta" });
 
-    return Results.Ok(new { message = "Contraseña actualizada correctamente" });
+    return Results.Ok(new { message = "ContraseÃ±a actualizada correctamente" });
 }).RequireAuthorization();
 
 app.MapDelete("/users/{id}", async (string id, ClaimsPrincipal user, IUserService service) =>
@@ -1572,11 +1572,11 @@ app.MapPost("/auth/resend-verification", async (RequestEmailVerificationRequest 
     }
 
     if (!success)
-        return Results.BadRequest(new { message = "No se pudo procesar el reenvío de verificación" });
+        return Results.BadRequest(new { message = "No se pudo procesar el reenvÃ­o de verificaciÃ³n" });
 
     return Results.Ok(new
     {
-        message = "Si tu cuenta existe y no está verificada, enviamos un correo de verificación",
+        message = "Si tu cuenta existe y no estÃ¡ verificada, enviamos un correo de verificaciÃ³n",
         success = true
     });
 });
@@ -1590,7 +1590,7 @@ app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest r
 
     return Results.Ok(new
     {
-        message = "Si el email está registrado, recibirás un código de recuperación",
+        message = "Si el email estÃ¡ registrado, recibirÃ¡s un cÃ³digo de recuperaciÃ³n",
         success = true
     });
 });
@@ -1598,30 +1598,30 @@ app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest r
 app.MapPost("/auth/validate-reset-code", async (ValidateResetCodeRequest request, IUserService service) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Code))
-        return Results.BadRequest(new { message = "Email y código son requeridos" });
+        return Results.BadRequest(new { message = "Email y cÃ³digo son requeridos" });
 
     var isValid = await service.ValidateResetCodeAsync(request.Email, request.Code);
 
     if (!isValid)
-        return Results.BadRequest(new { message = "Código inválido o expirado", valid = false });
+        return Results.BadRequest(new { message = "CÃ³digo invÃ¡lido o expirado", valid = false });
 
-    return Results.Ok(new { message = "Código válido", valid = true });
+    return Results.Ok(new { message = "CÃ³digo vÃ¡lido", valid = true });
 });
 
 app.MapPost("/auth/reset-password", async (ResetPasswordRequest request, IUserService service) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Code) || string.IsNullOrEmpty(request.NewPassword))
-        return Results.BadRequest(new { message = "Email, código y nueva contraseña son requeridos" });
+        return Results.BadRequest(new { message = "Email, cÃ³digo y nueva contraseÃ±a son requeridos" });
 
     if (request.NewPassword.Length < 6)
-        return Results.BadRequest(new { message = "La contraseña debe tener al menos 6 caracteres" });
+        return Results.BadRequest(new { message = "La contraseÃ±a debe tener al menos 6 caracteres" });
 
     var success = await service.ResetPasswordAsync(request.Email, request.Code, request.NewPassword);
 
     if (!success)
-        return Results.BadRequest(new { message = "No se pudo restablecer la contraseña. Código inválido o expirado" });
+        return Results.BadRequest(new { message = "No se pudo restablecer la contraseÃ±a. CÃ³digo invÃ¡lido o expirado" });
 
-    return Results.Ok(new { message = "Contraseña restablecida correctamente", success = true });
+    return Results.Ok(new { message = "ContraseÃ±a restablecida correctamente", success = true });
 });
 
 #endregion
@@ -1769,7 +1769,7 @@ app.MapPost("/metrics/track", async (TrackMetricRequest request, IMetricsService
 app.MapPost("/metrics/track-batch", async (TrackMetricsBatchRequest request, IMetricsService service) =>
 {
     if (request.Events == null || request.Events.Count == 0)
-        return Results.BadRequest(new { message = "Events es requerido y no puede ser vacío." });
+        return Results.BadRequest(new { message = "Events es requerido y no puede ser vacÃ­o." });
 
     try
     {
@@ -1924,7 +1924,7 @@ app.MapPost("/sales/guest", async (CreateGuestSaleRequest request, ISalesService
         string.IsNullOrWhiteSpace(request.CustomerPhone) ||
         string.IsNullOrWhiteSpace(request.CustomerAddress))
     {
-        return Results.BadRequest(new { message = "Nombre, email, teléfono y dirección son requeridos." });
+        return Results.BadRequest(new { message = "Nombre, email, telÃ©fono y direcciÃ³n son requeridos." });
     }
 
     try
@@ -2077,7 +2077,7 @@ app.MapPost("/images/upload", async (HttpRequest request, ClaimsPrincipal user, 
     var entityId = form["entityId"].ToString();
 
     if (file == null || file.Length == 0)
-        return Results.BadRequest(new { message = "No se ha enviado ningún archivo" });
+        return Results.BadRequest(new { message = "No se ha enviado ningÃºn archivo" });
 
     if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(entityId))
         return Results.BadRequest(new { message = "Folder y EntityId son requeridos" });
@@ -2163,8 +2163,8 @@ app.MapDelete("/images/by-url", async (string blobUrl, string entityId, ClaimsPr
 
     if (image == null)
     {
-        // Fallback idempotente solo para imágenes de carpeta "product":
-        // si no existe registro en colección images, igual intentamos remover la URL del producto.
+        // Fallback idempotente solo para imÃ¡genes de carpeta "product":
+        // si no existe registro en colecciÃ³n images, igual intentamos remover la URL del producto.
         var isProductBlob = false;
         if (Uri.TryCreate(blobUrl, UriKind.Absolute, out var blobUri))
         {
@@ -2195,11 +2195,11 @@ app.MapDelete("/images/by-url", async (string blobUrl, string entityId, ClaimsPr
             }
             catch (InvalidOperationException)
             {
-                // Si no está en el producto, la eliminación ya es efectiva (idempotente).
+                // Si no estÃ¡ en el producto, la eliminaciÃ³n ya es efectiva (idempotente).
             }
             catch (FormatException)
             {
-                // entityId inválido para producto; evitamos caída y respondemos idempotente.
+                // entityId invÃ¡lido para producto; evitamos caÃ­da y respondemos idempotente.
             }
 
             return Results.NoContent();
