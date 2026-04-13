@@ -151,7 +151,7 @@ public class CommunityProductService : ICommunityProductService
         if (!storeIds.Any())
             return new List<CommunityProduct>();
 
-        // PASO 3: Filtrar por comunidad, tiendas, categoría y activos
+        // PASO 3: Filtrar por comunidad, tiendas, categorÃ­a y activos
         var filter = Builders<CommunityProduct>.Filter.And(
             Builders<CommunityProduct>.Filter.In(cp => cp.StoreId, storeIds),
             Builders<CommunityProduct>.Filter.Eq(cp => cp.Categoria, categoria),

@@ -174,7 +174,7 @@ public class StoreService : IStoreService
         await UpsertCommunityStoreAsync(idComunidadGlobal, id, request.IsGlobal.GetValueOrDefault());
 
 
-        // Sincronizar autom�ticamente despu�s de actualizar
+        // Sincronizar automáticamente después de actualizar
         await _synchronizeService.SynchronizeProductsByStoreAsync(id);
 
         return await GetByIdAsync(id);

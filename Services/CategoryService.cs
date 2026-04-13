@@ -47,9 +47,9 @@ public class CategoryService : ICategoryService
 
     public async Task<CategoryResponse> CreateAsync(CreateCategoryRequest request)
     {
-        // Verificar si la categoría ya existe
+        // Verificar si la categorÃ­a ya existe
         if (await CategoryExistsAsync(request.Name))
-            throw new InvalidOperationException("La categoría ya existe");
+            throw new InvalidOperationException("La categorÃ­a ya existe");
 
         var category = new Category
         {
@@ -62,13 +62,13 @@ public class CategoryService : ICategoryService
 
     public async Task<CategoryResponse?> UpdateAsync(string id, UpdateCategoryRequest request)
     {
-        // Verificar si el nuevo nombre ya existe en otra categoría
+        // Verificar si el nuevo nombre ya existe en otra categorÃ­a
         var existingCategory = await _categoriesCollection
             .Find(c => c.Name.ToLower() == request.Name.ToLower() && c.Id != id)
             .FirstOrDefaultAsync();
 
         if (existingCategory != null)
-            throw new InvalidOperationException("Ya existe una categoría con ese nombre");
+            throw new InvalidOperationException("Ya existe una categorÃ­a con ese nombre");
 
         var update = Builders<Category>.Update
             .Set(c => c.Name, request.Name.Trim());
