@@ -25,7 +25,7 @@ public class CommunityProductService : ICommunityProductService
 
     public async Task<List<CommunityProduct>> GetByCommunityIdAsync(string communityId)
     {
-        // PASO 1: Obtener la comunidad por su ID (ej: "mercado-comunidad")
+        // PASO 1: Obtener la comunidad por su ID (ej: "feria-comunidad")
         var community = await _communityService.GetByCommunityIdAsync(communityId);
 
         if (community == null || string.IsNullOrEmpty(community.Id))
@@ -63,7 +63,7 @@ public class CommunityProductService : ICommunityProductService
     public async Task<PaginatedResult<CommunityProduct>> GetByCommunityIdPaginatedAsync(
         string communityId, int pageNumber, int pageSize)
     {
-        // PASO 1: Obtener la comunidad por su ID (ej: "mercado-comunidad")
+        // PASO 1: Obtener la comunidad por su ID (ej: "feria-comunidad")
         var community = await _communityService.GetByCommunityIdAsync(communityId);
         
         if (community == null || string.IsNullOrEmpty(community.Id))
