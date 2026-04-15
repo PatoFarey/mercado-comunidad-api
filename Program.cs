@@ -24,6 +24,9 @@ builder.Services.Configure<EmailSettings>(
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
 
+builder.Services.Configure<TurnstileSettings>(
+    builder.Configuration.GetSection("Turnstile"));
+
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()
     ?? throw new InvalidOperationException("La sección Jwt es requerida.");
 
@@ -56,6 +59,10 @@ builder.Services.AddSingleton<ISalesService, SalesService>();
 builder.Services.AddSingleton<IMetricsService, MetricsService>();
 builder.Services.AddSingleton<IPlanService, PlanService>();
 builder.Services.AddSingleton<IOgImageService, OgImageService>();
+builder.Services.AddHttpClient<ITurnstileService, TurnstileService>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(8);
+});
 builder.Services.AddHttpClient("og", c =>
 {
     c.Timeout = TimeSpan.FromSeconds(6);
@@ -1364,10 +1371,14 @@ app.MapPost("/auth/register", async (RegisterRequest request, IUserService servi
     return Results.Created($"/users/{user.Id}", authResponse);
 });
 
-app.MapPost("/auth/login", async (LoginRequest request, IUserService service, ITokenService tokenService) =>
+app.MapPost("/auth/login", async (LoginRequest request, IUserService service, ITokenService tokenService, ITurnstileService turnstileService, HttpContext httpContext) =>
 {
     if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
         return Results.BadRequest(new { message = "Email y contraseña son requeridos" });
+
+    var captchaOk = await turnstileService.ValidateTokenAsync(request.TurnstileToken, httpContext.Connection.RemoteIpAddress?.ToString());
+    if (!captchaOk)
+        return Results.BadRequest(new { message = "Captcha inválido. Intenta nuevamente." });
 
     UserResponse? user;
     try
@@ -1581,10 +1592,14 @@ app.MapPost("/auth/resend-verification", async (RequestEmailVerificationRequest 
     });
 });
 
-app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest request, IUserService service) =>
+app.MapPost("/auth/request-password-reset", async (RequestPasswordResetRequest request, IUserService service, ITurnstileService turnstileService, HttpContext httpContext) =>
 {
     if (string.IsNullOrEmpty(request.Email))
         return Results.BadRequest(new { message = "Email es requerido" });
+
+    var captchaOk = await turnstileService.ValidateTokenAsync(request.TurnstileToken, httpContext.Connection.RemoteIpAddress?.ToString());
+    if (!captchaOk)
+        return Results.BadRequest(new { message = "Captcha inválido. Intenta nuevamente." });
 
     await service.RequestPasswordResetAsync(request.Email);
 
