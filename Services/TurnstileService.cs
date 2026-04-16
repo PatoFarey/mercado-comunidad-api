@@ -56,15 +56,20 @@ public class TurnstileService : ITurnstileService
                 return false;
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            var verifyResponse = await JsonSerializer.DeserializeAsync<TurnstileVerifyResponse>(stream);
+            var rawResponse = await response.Content.ReadAsStringAsync();
+            var verifyResponse = JsonSerializer.Deserialize<TurnstileVerifyResponse>(rawResponse);
             if (verifyResponse?.Success == true)
                 return true;
 
             var errors = verifyResponse?.ErrorCodes is { Count: > 0 }
                 ? string.Join(",", verifyResponse.ErrorCodes)
                 : "none";
-            _logger.LogWarning("Turnstile verification failed. Error codes: {ErrorCodes}", errors);
+            _logger.LogWarning(
+                "Turnstile verification failed. Error codes: {ErrorCodes}. Hostname: {Hostname}. Raw: {RawResponse}",
+                errors,
+                verifyResponse?.Hostname ?? "none",
+                rawResponse
+            );
             return false;
         }
         catch (Exception ex)
@@ -76,8 +81,13 @@ public class TurnstileService : ITurnstileService
 
     private sealed class TurnstileVerifyResponse
     {
+        [JsonPropertyName("success")]
         public bool Success { get; set; }
+
         [JsonPropertyName("error-codes")]
         public List<string>? ErrorCodes { get; set; }
+
+        [JsonPropertyName("hostname")]
+        public string? Hostname { get; set; }
     }
 }
