@@ -943,6 +943,103 @@ app.MapPut("/admin/communities/{id}", async (string id, UpdateCommunityRequest r
     return Results.Ok(community);
 }).RequireAuthorization();
 
+app.MapGet("/admin/communities/{id}/stores", async (string id, ClaimsPrincipal user, ICommunityService communityService, IMongoDatabase db) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    var community = await communityService.GetByIdAsync(id);
+    if (community == null)
+        return Results.NotFound(new { message = "Comunidad no encontrada." });
+
+    // Only the owner or a super admin can see stores
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    if (!AuthorizationHelpers.IsSuperAdmin(user) && community.OwnerUserId != currentUserId)
+        return Results.Forbid();
+
+    var communityStoresCol = db.GetCollection<CommunityStore>("community_stores");
+    var storesCol = db.GetCollection<Store>("stores");
+
+    var communityStores = await communityStoresCol
+        .Find(Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, id))
+        .ToListAsync();
+
+    if (communityStores.Count == 0)
+        return Results.Ok(new List<object>());
+
+    var storeIds = communityStores.Select(cs => cs.StoreId).Distinct().ToList();
+    var stores = await storesCol
+        .Find(Builders<Store>.Filter.In(s => s.Id, storeIds))
+        .ToListAsync();
+
+    var storeMap = stores.ToDictionary(s => s.Id ?? string.Empty);
+
+    var result = communityStores
+        .Where(cs => storeMap.ContainsKey(cs.StoreId))
+        .Select(cs =>
+        {
+            var store = storeMap[cs.StoreId];
+            return new
+            {
+                id = store.Id,
+                name = store.Name,
+                linkStore = store.LinkStore,
+                logo = store.Logo,
+                active = store.Active,
+                ownerEnabled = cs.OwnerEnabled,
+                sellerEnabled = cs.SellerEnabled,
+                memberStatus = cs.OwnerEnabled && cs.SellerEnabled,
+                joinedAt = cs.CreatedAt,
+            };
+        })
+        .OrderBy(s => s.name)
+        .ToList();
+
+    return Results.Ok(result);
+}).RequireAuthorization();
+
+app.MapPut("/admin/communities/{communityId}/stores/{storeId}/toggle", async (string communityId, string storeId, ClaimsPrincipal user, ICommunityService communityService, IMongoDatabase db) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsAdmin(user))
+        return Results.Forbid();
+
+    var community = await communityService.GetByIdAsync(communityId);
+    if (community == null)
+        return Results.NotFound(new { message = "Comunidad no encontrada." });
+
+    var currentUserId = AuthorizationHelpers.GetCurrentUserId(user);
+    if (!AuthorizationHelpers.IsSuperAdmin(user) && community.OwnerUserId != currentUserId)
+        return Results.Forbid();
+
+    var col = db.GetCollection<CommunityStore>("community_stores");
+    var filter = Builders<CommunityStore>.Filter.And(
+        Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, communityId),
+        Builders<CommunityStore>.Filter.Eq(cs => cs.StoreId, storeId));
+
+    var existing = await col.Find(filter).FirstOrDefaultAsync();
+    if (existing == null)
+        return Results.NotFound(new { message = "Relación no encontrada." });
+
+    var newOwnerEnabled = !existing.OwnerEnabled;
+    var newStatus = newOwnerEnabled && existing.SellerEnabled;
+    await col.UpdateOneAsync(filter, Builders<CommunityStore>.Update
+        .Set(cs => cs.OwnerEnabled, newOwnerEnabled)
+        .Set(cs => cs.Status, newStatus)
+        .Set(cs => cs.UpdatedAt, DateTime.UtcNow));
+
+    return Results.Ok(new {
+        ownerEnabled = newOwnerEnabled,
+        sellerEnabled = existing.SellerEnabled,
+        memberStatus = newStatus,
+    });
+}).RequireAuthorization();
+
 app.MapDelete("/admin/communities/{id}", async (string id, ClaimsPrincipal user, ICommunityService service) =>
 {
     if (!IsAuthenticated(user))
@@ -1109,6 +1206,8 @@ app.MapPut("/admin/community-requests/{requestId}", async (
             await communityStoresCol.UpdateOneAsync(
                 Builders<CommunityStore>.Filter.Eq(cs => cs.Id, existing.Id),
                 Builders<CommunityStore>.Update
+                    .Set(cs => cs.OwnerEnabled, true)
+                    .Set(cs => cs.SellerEnabled, true)
                     .Set(cs => cs.Status, true)
                     .Set(cs => cs.UpdatedAt, DateTime.UtcNow));
         }
@@ -1118,6 +1217,8 @@ app.MapPut("/admin/community-requests/{requestId}", async (
             {
                 CommunityId = request.CommunityId,
                 StoreId = request.StoreId,
+                OwnerEnabled = true,
+                SellerEnabled = true,
                 Status = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
@@ -1181,7 +1282,8 @@ app.MapGet("/community-stores/store/{storeId}", async (string storeId, IMongoDat
             Name = c.Name,
             Logo = c.Logo,
             Open = c.Open,
-            Published = cs?.Status == true,
+            Published = cs?.OwnerEnabled == true && cs?.SellerEnabled == true,
+            OwnerEnabled = cs?.OwnerEnabled ?? true,
             RequestStatus = c.Open ? string.Empty : (req?.Status ?? "none"),
             RequestReason = (!c.Open && req?.Status == "rejected") ? (req?.Reason ?? string.Empty) : string.Empty,
         };
@@ -1217,8 +1319,10 @@ app.MapPost("/community-stores", async (PublishStoreRequest request, ClaimsPrinc
 
     if (existing != null)
     {
+        var newStatus = existing.OwnerEnabled && true;
         var update = Builders<CommunityStore>.Update
-            .Set(cs => cs.Status, true)
+            .Set(cs => cs.SellerEnabled, true)
+            .Set(cs => cs.Status, newStatus)
             .Set(cs => cs.UpdatedAt, DateTime.UtcNow);
         await col.UpdateOneAsync(cs => cs.Id == existing.Id, update);
     }
@@ -1228,6 +1332,8 @@ app.MapPost("/community-stores", async (PublishStoreRequest request, ClaimsPrinc
         {
             CommunityId = request.CommunityId,
             StoreId = request.StoreId,
+            OwnerEnabled = true,
+            SellerEnabled = true,
             Status = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -1247,11 +1353,10 @@ app.MapDelete("/community-stores", async (string storeId, string communityId, IM
         Builders<CommunityStore>.Filter.Eq(cs => cs.StoreId, storeId)
     );
 
-    var update = Builders<CommunityStore>.Update
+    await col.UpdateOneAsync(filter, Builders<CommunityStore>.Update
+        .Set(cs => cs.SellerEnabled, false)
         .Set(cs => cs.Status, false)
-        .Set(cs => cs.UpdatedAt, DateTime.UtcNow);
-
-    await col.UpdateOneAsync(filter, update);
+        .Set(cs => cs.UpdatedAt, DateTime.UtcNow));
     _ = Task.Run(() => syncService.SynchronizeProductsByStoreAsync(storeId));
     return Results.Ok(new { success = true });
 });
@@ -1875,19 +1980,21 @@ app.MapGet("/admin/community-metrics", async (
         : ownedCommunities.Where(c => c.Id == communityId).ToList();
 
     var targetIds = targetCommunities.Select(c => c.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+    // Slugs used when tracking events (e.g. "quilaco"), distinct from the ObjectId
+    var targetSlugs = targetCommunities.Select(c => c.CommunityId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
-    // Get store counts per community
+    // Get store counts per community (CommunityStore.CommunityId references the ObjectId)
     var storeFilter = Builders<CommunityStore>.Filter.And(
         Builders<CommunityStore>.Filter.In(cs => cs.CommunityId, targetIds),
         Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true));
     var communityStores = await communityStoresCol.Find(storeFilter).ToListAsync();
     var storeCountMap = communityStores.GroupBy(cs => cs.CommunityId).ToDictionary(g => g.Key, g => g.Count());
 
-    // Get community_view metric events
+    // Get community_view metric events (MetricEvent.CommunityId stores the slug, not the ObjectId)
     var metricFilters = new List<FilterDefinition<MetricEvent>>
     {
         Builders<MetricEvent>.Filter.Eq(m => m.EventType, MetricEventTypes.CommunityView),
-        Builders<MetricEvent>.Filter.In(m => m.CommunityId, targetIds),
+        Builders<MetricEvent>.Filter.In(m => m.CommunityId, targetSlugs),
     };
     if (dateFrom.HasValue) metricFilters.Add(Builders<MetricEvent>.Filter.Gte(m => m.CreatedAt, dateFrom.Value.Date));
     if (dateTo.HasValue)   metricFilters.Add(Builders<MetricEvent>.Filter.Lt(m => m.CreatedAt, dateTo.Value.Date.AddDays(1)));
@@ -1908,7 +2015,7 @@ app.MapGet("/admin/community-metrics", async (
         logo = c.Logo,
         active = c.Active,
         storeCount = storeCountMap.TryGetValue(c.Id ?? string.Empty, out var sc) ? sc : 0,
-        communityViews = viewsByCommunity.TryGetValue(c.Id ?? string.Empty, out var cv) ? cv : 0L,
+        communityViews = viewsByCommunity.TryGetValue(c.CommunityId ?? string.Empty, out var cv) ? cv : 0L,
     }).OrderByDescending(c => c.communityViews).ToList();
 
     // Daily timeline

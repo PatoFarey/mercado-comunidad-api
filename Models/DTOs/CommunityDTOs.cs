@@ -7,6 +7,7 @@ public class StoreCommunityStatusResponse
     public string Logo { get; set; } = string.Empty;
     public bool Open { get; set; }
     public bool Published { get; set; }
+    public bool OwnerEnabled { get; set; }
     public string RequestStatus { get; set; } = string.Empty; // pending | approved | rejected | none
     public string RequestReason { get; set; } = string.Empty;
 }
@@ -42,6 +43,8 @@ public class CommunityResponse
     public string Logo { get; set; } = string.Empty;
     public string Banner { get; set; } = string.Empty;
     public int StoresCount { get; set; }
+    public int ActiveStoresCount { get; set; }
+    public int InactiveStoresCount { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

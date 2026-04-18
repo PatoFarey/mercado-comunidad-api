@@ -29,13 +29,12 @@ public class CommunityService : ICommunityService
 
         foreach (var c in communities)
         {
-            var filter = Builders<CommunityStore>.Filter.And(
-                Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, c.Id),
-                Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)
-            );
-            var storesCount = (int)await _communityStoresCollection.CountDocumentsAsync(filter);
-
-            responses.Add(MapToResponse(c, storesCount));
+            var baseFilter = Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, c.Id);
+            var active = (int)await _communityStoresCollection.CountDocumentsAsync(
+                Builders<CommunityStore>.Filter.And(baseFilter, Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)));
+            var inactive = (int)await _communityStoresCollection.CountDocumentsAsync(
+                Builders<CommunityStore>.Filter.And(baseFilter, Builders<CommunityStore>.Filter.Eq(cs => cs.Status, false)));
+            responses.Add(MapToResponse(c, active, inactive));
         }
 
         return responses;
@@ -65,12 +64,12 @@ public class CommunityService : ICommunityService
         var responses = new List<CommunityResponse>();
         foreach (var c in communities)
         {
-            var filter = Builders<CommunityStore>.Filter.And(
-                Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, c.Id),
-                Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)
-            );
-            var storesCount = (int)await _communityStoresCollection.CountDocumentsAsync(filter);
-            responses.Add(MapToResponse(c, storesCount));
+            var baseFilter = Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, c.Id);
+            var active = (int)await _communityStoresCollection.CountDocumentsAsync(
+                Builders<CommunityStore>.Filter.And(baseFilter, Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)));
+            var inactive = (int)await _communityStoresCollection.CountDocumentsAsync(
+                Builders<CommunityStore>.Filter.And(baseFilter, Builders<CommunityStore>.Filter.Eq(cs => cs.Status, false)));
+            responses.Add(MapToResponse(c, active, inactive));
         }
 
         return responses;
@@ -89,12 +88,12 @@ public class CommunityService : ICommunityService
 
         foreach (var c in communities)
         {
-            var filter = Builders<CommunityStore>.Filter.And(
-                Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, c.Id),
-                Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)
-            );
-            var storesCount = (int)await _communityStoresCollection.CountDocumentsAsync(filter);
-            responses.Add(MapToResponse(c, storesCount));
+            var baseFilter = Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, c.Id);
+            var active = (int)await _communityStoresCollection.CountDocumentsAsync(
+                Builders<CommunityStore>.Filter.And(baseFilter, Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)));
+            var inactive = (int)await _communityStoresCollection.CountDocumentsAsync(
+                Builders<CommunityStore>.Filter.And(baseFilter, Builders<CommunityStore>.Filter.Eq(cs => cs.Status, false)));
+            responses.Add(MapToResponse(c, active, inactive));
         }
 
         return responses;
@@ -112,7 +111,7 @@ public class CommunityService : ICommunityService
     public async Task DeleteAsync(string id) =>
         await _communitiesCollection.DeleteOneAsync(c => c.Id == id);
 
-    private static CommunityResponse MapToResponse(Community c, int storesCount) => new()
+    private static CommunityResponse MapToResponse(Community c, int activeStoresCount, int inactiveStoresCount) => new()
     {
         Id = c.Id ?? string.Empty,
         CommunityId = c.CommunityId,
@@ -125,7 +124,9 @@ public class CommunityService : ICommunityService
         Active = c.Active,
         Visible = c.Visible,
         Logo = c.Logo,
-        StoresCount = storesCount,
+        StoresCount = activeStoresCount + inactiveStoresCount,
+        ActiveStoresCount = activeStoresCount,
+        InactiveStoresCount = inactiveStoresCount,
         CreatedAt = c.CreatedAt,
         UpdatedAt = c.UpdatedAt,
     };
