@@ -17,6 +17,12 @@ public class CommunityStore
     [BsonRepresentation(BsonType.ObjectId)]
     public string StoreId { get; set; } = string.Empty;
 
+    [BsonElement("ownerEnabled")]
+    public bool OwnerEnabled { get; set; } = true;
+
+    [BsonElement("sellerEnabled")]
+    public bool SellerEnabled { get; set; } = true;
+
     [BsonElement("status")]
     public bool Status { get; set; } = true;
 

@@ -247,7 +247,7 @@ public class StoreService : IStoreService
         return count > 0;
     }
 
-    private async Task UpsertCommunityStoreAsync(string communityId, string storeId, bool status)
+    private async Task UpsertCommunityStoreAsync(string communityId, string storeId, bool enabled)
     {
         var filter = Builders<CommunityStore>.Filter.And(
             Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, communityId),
@@ -260,9 +260,10 @@ public class StoreService : IStoreService
 
         if (existing != null)
         {
-            // Actualizar el status y updatedAt
             var update = Builders<CommunityStore>.Update
-                .Set(cs => cs.Status, status)
+                .Set(cs => cs.OwnerEnabled, enabled)
+                .Set(cs => cs.SellerEnabled, enabled)
+                .Set(cs => cs.Status, enabled)
                 .Set(cs => cs.UpdatedAt, DateTime.UtcNow);
 
             await _communityStoresCollection.UpdateOneAsync(
@@ -272,17 +273,16 @@ public class StoreService : IStoreService
         }
         else
         {
-            // Insertar nuevo registro
-            var communityStore = new CommunityStore
+            await _communityStoresCollection.InsertOneAsync(new CommunityStore
             {
                 CommunityId = communityId,
                 StoreId = storeId,
-                Status = status,
+                OwnerEnabled = enabled,
+                SellerEnabled = enabled,
+                Status = enabled,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
-            };
-
-            await _communityStoresCollection.InsertOneAsync(communityStore);
+            });
         }
     }
 
