@@ -70,6 +70,7 @@ public class MetricsService : IMetricsService
 
     public async Task<MetricsSummaryResponse> GetSummaryAsync(
         string? storeId = null,
+        string? productId = null,
         string? communityId = null,
         DateTime? dateFrom = null,
         DateTime? dateTo = null,
@@ -92,6 +93,9 @@ public class MetricsService : IMetricsService
 
             filters.Add(Builders<MetricEvent>.Filter.In(m => m.StoreId, allowedIds));
         }
+
+        if (!string.IsNullOrWhiteSpace(productId))
+            filters.Add(Builders<MetricEvent>.Filter.Eq(m => m.ProductId, productId));
 
         if (!string.IsNullOrWhiteSpace(communityId))
             filters.Add(Builders<MetricEvent>.Filter.Eq(m => m.CommunityId, communityId));

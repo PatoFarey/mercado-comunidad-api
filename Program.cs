@@ -610,6 +610,12 @@ app.MapGet("/products/active/list", async (IProductService service) =>
     return Results.Ok(products);
 });
 
+app.MapGet("/products/latest", async (IProductService service, int limit = 8) =>
+{
+    var products = await service.GetLatestAsync(limit);
+    return Results.Ok(products);
+});
+
 app.MapPost("/products", async (CreateProductRequest request, ClaimsPrincipal user, IProductService service, IStoreService storeService, IPlanService planService, IMongoDatabase db) =>
 {
     if (!IsAuthenticated(user))
@@ -1907,6 +1913,7 @@ app.MapGet("/metrics/summary", async (
     IMetricsService service,
     IStoreService storeService,
     string? storeId = null,
+    string? productId = null,
     string? communityId = null,
     DateTime? dateFrom = null,
     DateTime? dateTo = null) =>
@@ -1937,6 +1944,7 @@ app.MapGet("/metrics/summary", async (
 
     var summary = await service.GetSummaryAsync(
         storeId,
+        productId,
         communityId,
         normalizedDateFrom,
         normalizedDateTo,

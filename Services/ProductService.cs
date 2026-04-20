@@ -125,6 +125,17 @@ public class ProductService : IProductService
         return products.Select(MapToProductResponse).ToList();
     }
 
+    public async Task<List<ProductResponse>> GetLatestAsync(int limit)
+    {
+        var products = await _productsCollection
+            .Find(p => p.Active == true)
+            .SortByDescending(p => p.CreatedAt)
+            .Limit(limit)
+            .ToListAsync();
+
+        return products.Select(MapToProductResponse).ToList();
+    }
+
     public async Task<ProductResponse> CreateAsync(CreateProductRequest request)
     {
         var product = new Products

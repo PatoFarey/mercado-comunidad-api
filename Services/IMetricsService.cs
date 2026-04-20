@@ -8,6 +8,7 @@ public interface IMetricsService
     Task TrackBatchAsync(IEnumerable<TrackMetricRequest> requests);
     Task<MetricsSummaryResponse> GetSummaryAsync(
         string? storeId = null,
+        string? productId = null,
         string? communityId = null,
         DateTime? dateFrom = null,
         DateTime? dateTo = null,

@@ -11,6 +11,7 @@ public interface IProductService
     Task<List<ProductResponse>> GetByStoreIdAsync(string storeId);
     Task<PaginatedResult<ProductResponse>> GetByStoreIdPaginatedAsync(string storeId, int pageNumber, int pageSize);
     Task<List<ProductResponse>> GetActiveProductsAsync();
+    Task<List<ProductResponse>> GetLatestAsync(int limit);
     Task<ProductResponse> CreateAsync(CreateProductRequest request);
     Task<ProductResponse?> UpdateAsync(string id, UpdateProductRequest request);
     Task<bool> DeleteAsync(string id);
