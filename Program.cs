@@ -27,6 +27,9 @@ builder.Services.Configure<JwtSettings>(
 builder.Services.Configure<TurnstileSettings>(
     builder.Configuration.GetSection("Turnstile"));
 
+builder.Services.Configure<PaykuSettings>(
+    builder.Configuration.GetSection("Payku"));
+
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()
     ?? throw new InvalidOperationException("La sección Jwt es requerida.");
 
@@ -59,6 +62,11 @@ builder.Services.AddSingleton<ISalesService, SalesService>();
 builder.Services.AddSingleton<IMetricsService, MetricsService>();
 builder.Services.AddSingleton<IPlanService, PlanService>();
 builder.Services.AddSingleton<IOgImageService, OgImageService>();
+builder.Services.AddSingleton<IUserSubscriptionService, UserSubscriptionService>();
+builder.Services.AddHttpClient<IPaykuService, PaykuService>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(20);
+});
 builder.Services.AddHttpClient<ITurnstileService, TurnstileService>(c =>
 {
     c.Timeout = TimeSpan.FromSeconds(8);
@@ -2466,6 +2474,176 @@ app.MapPost("/products/synchronize/store/{storeId}", async (string storeId, Clai
 
     var count = await service.SynchronizeProductsByStoreAsync(storeId);
     return Results.Ok(new { message = $"Se sincronizaron {count} productos de la tienda", totalSynchronized = count });
+}).RequireAuthorization();
+
+#endregion
+
+#region Subscriptions
+
+app.MapGet("/plans", async (IMongoDatabase db) =>
+{
+    var col = db.GetCollection<Plan>("plans");
+    var plans = await col.Find(p => p.Active).SortBy(p => p.PriceClp).ToListAsync();
+    return Results.Ok(plans.Select(p => new
+    {
+        id = p.Id,
+        code = p.Code,
+        name = p.Name,
+        description = p.Description,
+        popular = p.Popular,
+        type = p.Type,
+        tier = p.Tier,
+        priceClp = p.PriceClp,
+        billing = p.Billing,
+        paykuPlanId = p.PaykuPlanId,
+        limits = p.Limits,
+        features = p.Features
+    }));
+});
+
+// Super admin: sync a plan to Payku (creates suplan entry)
+app.MapPost("/admin/plans/{id}/sync-payku", async (string id, IMongoDatabase db, IPaykuService paykuService, ClaimsPrincipal user) =>
+{
+    if (!IsAuthenticated(user)) return UnauthorizedResult();
+    if (!AuthorizationHelpers.IsSuperAdmin(user)) return Results.Forbid();
+
+    var col = db.GetCollection<Plan>("plans");
+    var plan = await col.Find(p => p.Id == id).FirstOrDefaultAsync();
+    if (plan == null) return Results.NotFound(new { message = "Plan no encontrado" });
+    if (plan.PriceClp <= 0) return Results.BadRequest(new { message = "El plan debe tener un precio mayor a 0 para crear suscripciones en Payku" });
+
+    var paykuResp = await paykuService.CreatePlanAsync(new PaykuCreatePlanRequest
+    {
+        name = $"{plan.Name}_{plan.Id![^6..]}",
+        amount = ((int)plan.PriceClp).ToString(),
+        interval = "1",
+        interval_count = "1",
+        trial_days = "0",
+        currency = "CLP"
+    });
+
+    if (string.IsNullOrWhiteSpace(paykuResp.PlanId))
+        return Results.BadRequest(new { message = paykuResp.message_error ?? paykuResp.message ?? "Error al crear plan en Payku" });
+
+    await col.UpdateOneAsync(p => p.Id == id,
+        Builders<Plan>.Update.Set(p => p.PaykuPlanId, paykuResp.PlanId));
+
+    return Results.Ok(new { paykuPlanId = paykuResp.PlanId });
+}).RequireAuthorization();
+
+// User: start a subscription flow
+app.MapPost("/subscriptions/start", async (StartSubscriptionRequest request, ClaimsPrincipal user, IMongoDatabase db,
+    IPaykuService paykuService, IUserSubscriptionService subService, IUserService userService, IConfiguration config) =>
+{
+    if (!IsAuthenticated(user)) return UnauthorizedResult();
+
+    var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+    var userData = await userService.GetByIdAsync(userId);
+    if (userData == null) return Results.NotFound(new { message = "Usuario no encontrado" });
+
+    var col = db.GetCollection<Plan>("plans");
+    var plan = await col.Find(p => p.Id == request.PlanId && p.Active).FirstOrDefaultAsync();
+    if (plan == null) return Results.NotFound(new { message = "Plan no encontrado" });
+    if (string.IsNullOrWhiteSpace(plan.PaykuPlanId))
+        return Results.BadRequest(new { message = "El plan no está sincronizado con Payku" });
+
+    // Create or retrieve Payku client
+    var clientResp = await paykuService.CreateClientAsync(new PaykuCreateClientRequest
+    {
+        name = userData.Name ?? "Usuario",
+        email = userData.Email ?? "",
+        phone = !string.IsNullOrWhiteSpace(userData.Phone) ? userData.Phone : "000000000"
+    });
+
+    if (string.IsNullOrWhiteSpace(clientResp.ClientId))
+        return Results.BadRequest(new { message = clientResp.message_error ?? clientResp.message ?? "Error al crear cliente en Payku" });
+
+    // Persist pending subscription
+    await subService.CreatePendingAsync(userId, request.PlanId, clientResp.ClientId);
+
+    // Build webhook and redirect URLs
+    var frontendUrl = (config["FrontendUrl"] ?? "https://feriacomunidad.cl").TrimEnd('/');
+    var apiBase = config["ApiBaseUrl"] ?? "https://api.feriacomunidad.cl";
+
+    var subResp = await paykuService.CreateSubscriptionAsync(new PaykuCreateSubscriptionRequest
+    {
+        plan = plan.PaykuPlanId,
+        client = clientResp.ClientId,
+        url_return = $"{frontendUrl}/admin/subscription?status=success",
+        url_cancel = $"{frontendUrl}/admin/subscription?status=cancel",
+        url_notify_suscription = $"{apiBase}/subscriptions/webhook/activation",
+        url_notify_payment = $"{apiBase}/subscriptions/webhook/payment"
+    });
+
+    if (string.IsNullOrWhiteSpace(subResp.url))
+        return Results.BadRequest(new { message = subResp.message ?? "Error al iniciar suscripción en Payku" });
+
+    return Results.Ok(new StartSubscriptionResponse
+    {
+        SubscriptionId = subResp.token ?? "",
+        PaymentUrl = subResp.url
+    });
+}).RequireAuthorization();
+
+// Payku webhook: subscription activated
+app.MapPost("/subscriptions/webhook/activation", async (PaykuWebhookActivation payload, IUserSubscriptionService subService) =>
+{
+    if (string.IsNullOrWhiteSpace(payload.client)) return Results.BadRequest();
+
+    // Payku activates subscriptions at the start of next month billing cycle
+    var nextBilling = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+        .AddMonths(1);
+
+    await subService.ActivateAsync(payload.token ?? "", payload.client, nextBilling);
+    return Results.Ok();
+});
+
+// Payku webhook: payment received
+app.MapPost("/subscriptions/webhook/payment", async (PaykuWebhookPayment payload, IUserSubscriptionService subService) =>
+{
+    if (string.IsNullOrWhiteSpace(payload.client)) return Results.BadRequest();
+
+    var nextBilling = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+        .AddMonths(1);
+
+    await subService.RecordPaymentAsync(payload.client, payload.token ?? "", nextBilling);
+    return Results.Ok();
+});
+
+// User: get own subscription
+app.MapGet("/subscriptions/me", async (ClaimsPrincipal user, IUserSubscriptionService subService, IMongoDatabase db) =>
+{
+    if (!IsAuthenticated(user)) return UnauthorizedResult();
+
+    var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+    var sub = await subService.GetByUserIdAsync(userId);
+    if (sub == null) return Results.Ok((object?)null);
+
+    var plansCol = db.GetCollection<Plan>("plans");
+    var plan = await plansCol.Find(p => p.Id == sub.PlanId).FirstOrDefaultAsync();
+
+    return Results.Ok(new UserSubscriptionResponse
+    {
+        Id = sub.Id ?? "",
+        PlanId = sub.PlanId,
+        PlanName = plan?.Name ?? "",
+        Status = sub.Status,
+        StartDate = sub.StartDate,
+        NextBillingDate = sub.NextBillingDate,
+        CreatedAt = sub.CreatedAt
+    });
+}).RequireAuthorization();
+
+// User: cancel subscription
+app.MapPost("/subscriptions/cancel", async (ClaimsPrincipal user, IUserSubscriptionService subService) =>
+{
+    if (!IsAuthenticated(user)) return UnauthorizedResult();
+
+    var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+    var sub = await subService.CancelAsync(userId);
+    if (sub == null) return Results.NotFound(new { message = "No se encontró una suscripción activa" });
+
+    return Results.Ok(new { message = "Suscripción cancelada" });
 }).RequireAuthorization();
 
 #endregion

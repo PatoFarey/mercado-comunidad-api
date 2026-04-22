@@ -27,6 +27,18 @@ public class Plan
     [BsonElement("billing")]
     public string Billing { get; set; } = string.Empty;
 
+    [BsonElement("description")]
+    [BsonIgnoreIfNull]
+    public string? Description { get; set; }
+
+    [BsonElement("popular")]
+    [BsonIgnoreIfDefault]
+    public bool Popular { get; set; }
+
+    [BsonElement("paykuPlanId")]
+    [BsonIgnoreIfNull]
+    public string? PaykuPlanId { get; set; }
+
     [BsonElement("active")]
     public bool Active { get; set; }
 
