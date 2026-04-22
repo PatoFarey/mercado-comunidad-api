@@ -52,9 +52,11 @@ public class PaykuCreateSubscriptionRequest
 
 public class PaykuCreateSubscriptionResponse
 {
+    public string? id { get; set; }
     public string? token { get; set; }
     public string? url { get; set; }
     public string? message { get; set; }
+    public string? SubscriptionId => id ?? token;
 }
 
 public class PaykuWebhookActivation

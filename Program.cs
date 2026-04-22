@@ -3,6 +3,7 @@ using ApiMercadoComunidad.Models;
 using ApiMercadoComunidad.Models.DTOs;
 using ApiMercadoComunidad.Security;
 using ApiMercadoComunidad.Services;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -1598,7 +1599,7 @@ app.MapPut("/users/{id}/role", async (string id, UpdateRoleRequest request, Clai
     return success ? Results.Ok(new { success = true }) : Results.NotFound();
 }).RequireAuthorization();
 
-app.MapGet("/admin/users", async (ClaimsPrincipal user, IUserService service) =>
+app.MapGet("/admin/users", async (ClaimsPrincipal user, IUserService service, IMongoDatabase db) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
@@ -1607,7 +1608,37 @@ app.MapGet("/admin/users", async (ClaimsPrincipal user, IUserService service) =>
         return Results.Forbid();
 
     var users = await service.GetAllAsync();
-    return Results.Ok(users);
+    var storesCol = db.GetCollection<BsonDocument>("stores");
+    var pipeline = new[]
+    {
+        new BsonDocument("$unwind", "$users"),
+        new BsonDocument("$group", new BsonDocument
+        {
+            { "_id", "$users.userID" },
+            { "count", new BsonDocument("$sum", 1) }
+        })
+    };
+    var storeCounts = await storesCol.Aggregate<BsonDocument>(pipeline).ToListAsync();
+
+    var countMap = storeCounts
+        .Where(d => d.Contains("_id") && !d["_id"].IsBsonNull)
+        .ToDictionary(
+            d => d["_id"].BsonType == BsonType.ObjectId
+                ? d["_id"].AsObjectId.ToString()
+                : d["_id"].ToString(),
+            d => d["count"].AsInt32);
+
+    var result = users.Select(u => new
+    {
+        u.Id,
+        u.Name,
+        u.Email,
+        u.Role,
+        u.EmailVerified,
+        storeCount = countMap.GetValueOrDefault(u.Id ?? "", 0)
+    });
+
+    return Results.Ok(result);
 }).RequireAuthorization();
 
 app.MapGet("/users/{userId}/plan-usage", async (string userId, ClaimsPrincipal user, IMongoDatabase db) =>
@@ -2531,6 +2562,25 @@ app.MapPost("/admin/plans/{id}/sync-payku", async (string id, IMongoDatabase db,
     return Results.Ok(new { paykuPlanId = paykuResp.PlanId });
 }).RequireAuthorization();
 
+// Super admin: set Payku plan ID manually (when plan already exists in Payku)
+app.MapPut("/admin/plans/{id}/payku-id", async (string id, HttpContext ctx, IMongoDatabase db, ClaimsPrincipal user) =>
+{
+    if (!IsAuthenticated(user)) return UnauthorizedResult();
+    if (!AuthorizationHelpers.IsSuperAdmin(user)) return Results.Forbid();
+
+    var body = await ctx.Request.ReadFromJsonAsync<Dictionary<string, string>>();
+    var paykuPlanId = body?.GetValueOrDefault("paykuPlanId")?.Trim();
+    if (string.IsNullOrWhiteSpace(paykuPlanId))
+        return Results.BadRequest(new { message = "paykuPlanId es requerido" });
+
+    var col = db.GetCollection<Plan>("plans");
+    var result = await col.UpdateOneAsync(p => p.Id == id,
+        Builders<Plan>.Update.Set(p => p.PaykuPlanId, paykuPlanId));
+
+    if (result.MatchedCount == 0) return Results.NotFound(new { message = "Plan no encontrado" });
+    return Results.Ok(new { paykuPlanId });
+}).RequireAuthorization();
+
 // User: start a subscription flow
 app.MapPost("/subscriptions/start", async (StartSubscriptionRequest request, ClaimsPrincipal user, IMongoDatabase db,
     IPaykuService paykuService, IUserSubscriptionService subService, IUserService userService, IConfiguration config) =>
@@ -2558,13 +2608,11 @@ app.MapPost("/subscriptions/start", async (StartSubscriptionRequest request, Cla
     if (string.IsNullOrWhiteSpace(clientResp.ClientId))
         return Results.BadRequest(new { message = clientResp.message_error ?? clientResp.message ?? "Error al crear cliente en Payku" });
 
-    // Persist pending subscription
-    await subService.CreatePendingAsync(userId, request.PlanId, clientResp.ClientId);
-
     // Build webhook and redirect URLs
     var frontendUrl = (config["FrontendUrl"] ?? "https://feriacomunidad.cl").TrimEnd('/');
     var apiBase = config["ApiBaseUrl"] ?? "https://api.feriacomunidad.cl";
 
+    // Create Payku subscription BEFORE persisting locally — avoids orphaned pending records on failure
     var subResp = await paykuService.CreateSubscriptionAsync(new PaykuCreateSubscriptionRequest
     {
         plan = plan.PaykuPlanId,
@@ -2578,9 +2626,12 @@ app.MapPost("/subscriptions/start", async (StartSubscriptionRequest request, Cla
     if (string.IsNullOrWhiteSpace(subResp.url))
         return Results.BadRequest(new { message = subResp.message ?? "Error al iniciar suscripción en Payku" });
 
+    // Persist pending subscription only after Payku confirms it
+    await subService.CreatePendingAsync(userId, request.PlanId, clientResp.ClientId, subResp.SubscriptionId ?? "");
+
     return Results.Ok(new StartSubscriptionResponse
     {
-        SubscriptionId = subResp.token ?? "",
+        SubscriptionId = subResp.SubscriptionId ?? "",
         PaymentUrl = subResp.url
     });
 }).RequireAuthorization();
@@ -2610,6 +2661,23 @@ app.MapPost("/subscriptions/webhook/payment", async (PaykuWebhookPayment payload
     return Results.Ok();
 });
 
+// User: confirm subscription after returning from Payku gateway (fallback for when webhook can't reach localhost)
+app.MapPost("/subscriptions/confirm", async (ClaimsPrincipal user, IUserSubscriptionService subService) =>
+{
+    if (!IsAuthenticated(user)) return UnauthorizedResult();
+
+    var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+    var sub = await subService.GetByUserIdAsync(userId);
+    if (sub == null) return Results.NotFound(new { message = "No se encontró suscripción pendiente" });
+    if (sub.Status != "pending") return Results.Ok(new { status = sub.Status });
+
+    var nextBilling = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+        .AddMonths(1);
+
+    await subService.ActivateAsync(sub.PaykuSubscriptionId ?? "", sub.PaykuClientId, nextBilling);
+    return Results.Ok(new { status = "active" });
+}).RequireAuthorization();
+
 // User: get own subscription
 app.MapGet("/subscriptions/me", async (ClaimsPrincipal user, IUserSubscriptionService subService, IMongoDatabase db) =>
 {
@@ -2635,14 +2703,25 @@ app.MapGet("/subscriptions/me", async (ClaimsPrincipal user, IUserSubscriptionSe
 }).RequireAuthorization();
 
 // User: cancel subscription
-app.MapPost("/subscriptions/cancel", async (ClaimsPrincipal user, IUserSubscriptionService subService) =>
+app.MapPost("/subscriptions/cancel", async (ClaimsPrincipal user, IUserSubscriptionService subService, IPaykuService paykuService, ILogger<Program> logger) =>
 {
     if (!IsAuthenticated(user)) return UnauthorizedResult();
 
     var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-    var sub = await subService.CancelAsync(userId);
-    if (sub == null) return Results.NotFound(new { message = "No se encontró una suscripción activa" });
 
+    // Get subscription before cancelling to retrieve the Payku token
+    var existing = await subService.GetByUserIdAsync(userId);
+    if (existing == null || (existing.Status != "active" && existing.Status != "pending"))
+        return Results.NotFound(new { message = "No se encontró una suscripción activa" });
+
+    // Cancel in Payku first
+    if (!string.IsNullOrWhiteSpace(existing.PaykuSubscriptionId))
+    {
+        try { await paykuService.CancelSubscriptionAsync(existing.PaykuSubscriptionId); }
+        catch (Exception ex) { logger.LogWarning("Payku cancel error (ignored): {Msg}", ex.Message); }
+    }
+
+    await subService.CancelAsync(userId);
     return Results.Ok(new { message = "Suscripción cancelada" });
 }).RequireAuthorization();
 

@@ -7,4 +7,5 @@ public interface IPaykuService
     Task<PaykuCreateClientResponse> CreateClientAsync(PaykuCreateClientRequest request);
     Task<PaykuCreatePlanResponse> CreatePlanAsync(PaykuCreatePlanRequest request);
     Task<PaykuCreateSubscriptionResponse> CreateSubscriptionAsync(PaykuCreateSubscriptionRequest request);
+    Task CancelSubscriptionAsync(string subscriptionToken);
 }

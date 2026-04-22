@@ -104,5 +104,27 @@ public class PaykuService : IPaykuService
         => await SendAsync<PaykuCreatePlanResponse>(BuildRequest(HttpMethod.Post, "/api/suplan", request));
 
     public async Task<PaykuCreateSubscriptionResponse> CreateSubscriptionAsync(PaykuCreateSubscriptionRequest request)
-        => await SendAsync<PaykuCreateSubscriptionResponse>(BuildRequest(HttpMethod.Post, "/api/sususcription", request));
+    {
+        var resp = await SendAsync<PaykuCreateSubscriptionResponse>(BuildRequest(HttpMethod.Post, "/api/sususcription", request));
+        _logger.LogInformation("Payku subscription → id={Id} token={Token} url={Url}", resp.id, resp.token, resp.url);
+        return resp;
+    }
+
+    public async Task CancelSubscriptionAsync(string subscriptionToken)
+    {
+        var path = $"/api/sususcription/{subscriptionToken}/";
+        var normalizedPath = "/" + path.TrimStart('/').TrimEnd('/') + "/";
+        var signature = BuildSignature(normalizedPath, new Dictionary<string, string>());
+        var fullUrl = _settings.BaseUrl.TrimEnd('/') + normalizedPath;
+
+        _logger.LogInformation("Payku → DELETE {Url}", fullUrl);
+
+        var req = new HttpRequestMessage(HttpMethod.Delete, fullUrl);
+        req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_settings.PublicToken}");
+        req.Headers.TryAddWithoutValidation("Sign", signature);
+
+        var resp = await _http.SendAsync(req);
+        var content = await resp.Content.ReadAsStringAsync();
+        _logger.LogInformation("Payku ← {Status} | {Body}", (int)resp.StatusCode, content[..Math.Min(300, content.Length)]);
+    }
 }
