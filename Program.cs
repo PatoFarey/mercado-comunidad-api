@@ -2612,6 +2612,12 @@ app.MapPost("/subscriptions/start", async (StartSubscriptionRequest request, Cla
     var frontendUrl = (config["FrontendUrl"] ?? "https://feriacomunidad.cl").TrimEnd('/');
     var apiBase = config["ApiBaseUrl"] ?? "https://api.feriacomunidad.cl";
 
+    app.Logger.LogInformation("Payku URLs → return={Return} cancel={Cancel} notifyActivation={Activation} notifyPayment={Payment}",
+        (object)$"{frontendUrl}/admin/subscription?status=success",
+        (object)$"{frontendUrl}/admin/subscription?status=cancel",
+        (object)$"{apiBase}/subscriptions/webhook/activation",
+        (object)$"{apiBase}/subscriptions/webhook/payment");
+
     // Create Payku subscription BEFORE persisting locally — avoids orphaned pending records on failure
     var subResp = await paykuService.CreateSubscriptionAsync(new PaykuCreateSubscriptionRequest
     {
