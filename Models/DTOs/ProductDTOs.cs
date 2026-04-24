@@ -11,7 +11,8 @@ public class CreateProductRequest
     public string Category { get; set; } = string.Empty;
     public bool IsNew { get; set; } = true;
     public string ShippingInfoProduct { get; set; } = string.Empty;
-    public string DevolucionGarantia { get; set; } = string.Empty;
+    public string ReturnPolicy { get; set; } = string.Empty;
+    public string PaymentMethod { get; set; } = string.Empty;
 }
 
 public class UpdateProductRequest
@@ -25,7 +26,8 @@ public class UpdateProductRequest
     public bool? Active { get; set; }
     public bool? IsNew { get; set; }
     public string? ShippingInfoProduct { get; set; }
-    public string? DevolucionGarantia { get; set; }
+    public string? ReturnPolicy { get; set; }
+    public string? PaymentMethod { get; set; }
 }
 
 public class ProductResponse
@@ -41,7 +43,8 @@ public class ProductResponse
     public bool Active { get; set; }
     public bool IsNew { get; set; }
     public string ShippingInfoProduct { get; set; } = string.Empty;
-    public string DevolucionGarantia { get; set; } = string.Empty;
+    public string ReturnPolicy { get; set; } = string.Empty;
+    public string PaymentMethod { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

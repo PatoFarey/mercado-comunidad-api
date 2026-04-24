@@ -3,6 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace ApiMercadoComunidad.Models;
 
+[BsonIgnoreExtraElements]
 public class Products
 {
     [BsonId]
@@ -49,7 +50,10 @@ public class Products
     [BsonElement("shippingInfoProduct")]
     public string ShippingInfoProduct { get; set; } = string.Empty;
 
-    [BsonElement("devolucionGarantia")]
-    public string DevolucionGarantia { get; set; } = string.Empty;
-     
+    [BsonElement("returnGuarantee")]
+    public string ReturnPolicy { get; set; } = string.Empty;
+
+    [BsonElement("paymentMethod")]
+    public string PaymentMethod { get; set; } = string.Empty;
+
 }

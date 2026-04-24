@@ -150,7 +150,8 @@ public class ProductService : IProductService
             Active = true,
             IsNew = request.IsNew,
             ShippingInfoProduct = request.ShippingInfoProduct,
-            DevolucionGarantia = request.DevolucionGarantia,
+            ReturnPolicy = request.ReturnPolicy,
+            PaymentMethod = request.PaymentMethod,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -195,8 +196,11 @@ public class ProductService : IProductService
         if (request.ShippingInfoProduct != null)
             updateDefinition = updateDefinition.Set(p => p.ShippingInfoProduct, request.ShippingInfoProduct);
 
-        if (request.DevolucionGarantia != null)
-            updateDefinition = updateDefinition.Set(p => p.DevolucionGarantia, request.DevolucionGarantia);
+        if (request.ReturnPolicy != null)
+            updateDefinition = updateDefinition.Set(p => p.ReturnPolicy, request.ReturnPolicy);
+
+        if (request.PaymentMethod != null)
+            updateDefinition = updateDefinition.Set(p => p.PaymentMethod, request.PaymentMethod);
 
         var result = await _productsCollection.UpdateOneAsync(
             p => p.Id == id,
@@ -242,7 +246,8 @@ public class ProductService : IProductService
             Active = product.Active,
             IsNew = product.IsNew,
             ShippingInfoProduct = product.ShippingInfoProduct,
-            DevolucionGarantia = product.DevolucionGarantia,
+            ReturnPolicy = product.ReturnPolicy,
+            PaymentMethod = product.PaymentMethod,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
         };
