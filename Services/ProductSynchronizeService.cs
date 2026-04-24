@@ -57,6 +57,8 @@ public class ProductSynchronizeService : IProductSynchronizeService
             Categoria = product.Category,
             Active = product.Active,
             IsNew = product.IsNew,
+            ShippingInfoProduct = product.ShippingInfoProduct,
+            DevolucionGarantia = product.DevolucionGarantia,
 
             // Datos de la tienda
             StoreSlug = store.LinkStore,

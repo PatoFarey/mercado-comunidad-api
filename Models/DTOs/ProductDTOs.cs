@@ -10,6 +10,8 @@ public class CreateProductRequest
     public List<string> Images { get; set; } = new();
     public string Category { get; set; } = string.Empty;
     public bool IsNew { get; set; } = true;
+    public string ShippingInfoProduct { get; set; } = string.Empty;
+    public string DevolucionGarantia { get; set; } = string.Empty;
 }
 
 public class UpdateProductRequest
@@ -22,6 +24,8 @@ public class UpdateProductRequest
     public string? Category { get; set; }
     public bool? Active { get; set; }
     public bool? IsNew { get; set; }
+    public string? ShippingInfoProduct { get; set; }
+    public string? DevolucionGarantia { get; set; }
 }
 
 public class ProductResponse
@@ -36,6 +40,8 @@ public class ProductResponse
     public string Category { get; set; } = string.Empty;
     public bool Active { get; set; }
     public bool IsNew { get; set; }
+    public string ShippingInfoProduct { get; set; } = string.Empty;
+    public string DevolucionGarantia { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

@@ -45,5 +45,11 @@ public class Products
 
     [BsonElement("isNew")]
     public bool IsNew { get; set; } = true;
+
+    [BsonElement("shippingInfoProduct")]
+    public string ShippingInfoProduct { get; set; } = string.Empty;
+
+    [BsonElement("devolucionGarantia")]
+    public string DevolucionGarantia { get; set; } = string.Empty;
      
 }

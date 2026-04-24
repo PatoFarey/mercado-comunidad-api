@@ -149,6 +149,8 @@ public class ProductService : IProductService
             Category = request.Category,
             Active = true,
             IsNew = request.IsNew,
+            ShippingInfoProduct = request.ShippingInfoProduct,
+            DevolucionGarantia = request.DevolucionGarantia,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -189,6 +191,12 @@ public class ProductService : IProductService
 
         if (request.IsNew.HasValue)
             updateDefinition = updateDefinition.Set(p => p.IsNew, request.IsNew.Value);
+
+        if (request.ShippingInfoProduct != null)
+            updateDefinition = updateDefinition.Set(p => p.ShippingInfoProduct, request.ShippingInfoProduct);
+
+        if (request.DevolucionGarantia != null)
+            updateDefinition = updateDefinition.Set(p => p.DevolucionGarantia, request.DevolucionGarantia);
 
         var result = await _productsCollection.UpdateOneAsync(
             p => p.Id == id,
@@ -233,6 +241,8 @@ public class ProductService : IProductService
             Category = product.Category,
             Active = product.Active,
             IsNew = product.IsNew,
+            ShippingInfoProduct = product.ShippingInfoProduct,
+            DevolucionGarantia = product.DevolucionGarantia,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
         };
