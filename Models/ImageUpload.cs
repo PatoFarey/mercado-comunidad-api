@@ -13,7 +13,6 @@ public class ImageUpload
     public string Folder { get; set; } = string.Empty;
 
     [BsonElement("entityId")]
-    [BsonRepresentation(BsonType.ObjectId)]
     public string EntityId { get; set; } = string.Empty;
 
     [BsonElement("fileName")]

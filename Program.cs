@@ -1599,6 +1599,43 @@ app.MapPut("/users/{id}/role", async (string id, UpdateRoleRequest request, Clai
     return success ? Results.Ok(new { success = true }) : Results.NotFound();
 }).RequireAuthorization();
 
+app.MapGet("/admin/stores", async (ClaimsPrincipal user, IMongoDatabase db) =>
+{
+    if (!IsAuthenticated(user))
+        return UnauthorizedResult();
+
+    if (!AuthorizationHelpers.IsSuperAdmin(user))
+        return Results.Forbid();
+
+    var storesCol = db.GetCollection<Store>("stores");
+    var productsCol = db.GetCollection<Products>("products");
+
+    var stores = await storesCol.Find(_ => true).SortBy(s => s.Name).ToListAsync();
+
+    var productCounts = await productsCol
+        .Aggregate()
+        .Group(p => p.IdStore, g => new { StoreId = g.Key, Count = g.Count() })
+        .ToListAsync();
+
+    var countMap = productCounts.ToDictionary(x => x.StoreId, x => x.Count);
+
+    var result = stores.Select(s => new
+    {
+        id = s.Id,
+        name = s.Name,
+        linkStore = s.LinkStore,
+        logo = s.Logo,
+        active = s.Active,
+        isGlobal = s.IsGlobal,
+        email = s.Email,
+        phone = s.Phone,
+        productCount = s.Id != null && countMap.TryGetValue(s.Id, out var c) ? c : 0,
+        createdAt = s.CreatedAt,
+    });
+
+    return Results.Ok(result);
+}).RequireAuthorization();
+
 app.MapGet("/admin/users", async (ClaimsPrincipal user, IUserService service, IMongoDatabase db) =>
 {
     if (!IsAuthenticated(user))
