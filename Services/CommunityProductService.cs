@@ -10,6 +10,7 @@ public class CommunityProductService : ICommunityProductService
 {
     private readonly IMongoCollection<CommunityProduct> _communityProductsCollection;
     private readonly IMongoCollection<CommunityStore> _communityStoresCollection;
+    private readonly IMongoCollection<Store> _storesCollection;
     private readonly ICommunityService _communityService;
 
     public CommunityProductService(
@@ -20,35 +21,40 @@ public class CommunityProductService : ICommunityProductService
         var mongoDatabase = mongoClient.GetDatabase(mongoDbSettings.Value.DatabaseName);
         _communityProductsCollection = mongoDatabase.GetCollection<CommunityProduct>("community_products");
         _communityStoresCollection = mongoDatabase.GetCollection<CommunityStore>("community_stores");
+        _storesCollection = mongoDatabase.GetCollection<Store>("stores");
         _communityService = communityService;
+    }
+
+    private async Task<List<string>> GetActiveStoreIdsAsync(string communityMongoId)
+    {
+        var communityStoresFilter = Builders<CommunityStore>.Filter.And(
+            Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, communityMongoId),
+            Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)
+        );
+        var communityStores = await _communityStoresCollection.Find(communityStoresFilter).ToListAsync();
+        var linkedStoreIds = communityStores.Select(cs => cs.StoreId).ToList();
+
+        if (!linkedStoreIds.Any()) return new List<string>();
+
+        var activeStoreIds = await _storesCollection
+            .Find(Builders<Store>.Filter.And(
+                Builders<Store>.Filter.In(s => s.Id, linkedStoreIds),
+                Builders<Store>.Filter.Eq(s => s.Active, true)
+            ))
+            .Project(s => s.Id!)
+            .ToListAsync();
+
+        return activeStoreIds;
     }
 
     public async Task<List<CommunityProduct>> GetByCommunityIdAsync(string communityId)
     {
-        // PASO 1: Obtener la comunidad por su ID (ej: "feria-comunidad")
         var community = await _communityService.GetByCommunityIdAsync(communityId);
+        if (community == null || string.IsNullOrEmpty(community.Id)) return new List<CommunityProduct>();
 
-        if (community == null || string.IsNullOrEmpty(community.Id))
-            return new List<CommunityProduct>();
+        var storeIds = await GetActiveStoreIdsAsync(community.Id);
+        if (!storeIds.Any()) return new List<CommunityProduct>();
 
-        // PASO 2: Obtener las tiendas asociadas desde community_stores
-        var communityStoresFilter = Builders<CommunityStore>.Filter.And(
-            Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, community.Id),
-            Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)
-        );
-
-        var communityStores = await _communityStoresCollection
-            .Find(communityStoresFilter)
-            .ToListAsync();
-
-        var storeIds = communityStores
-            .Select(cs => cs.StoreId)
-            .ToList();
-
-        if (!storeIds.Any())
-            return new List<CommunityProduct>();
-
-        // PASO 3: Buscar productos en community_products de esas tiendas
         var filter = Builders<CommunityProduct>.Filter.And(
             Builders<CommunityProduct>.Filter.In(cp => cp.StoreId, storeIds),
             Builders<CommunityProduct>.Filter.Eq(cp => cp.Active, true)
@@ -63,53 +69,26 @@ public class CommunityProductService : ICommunityProductService
     public async Task<PaginatedResult<CommunityProduct>> GetByCommunityIdPaginatedAsync(
         string communityId, int pageNumber, int pageSize)
     {
-        // PASO 1: Obtener la comunidad por su ID (ej: "feria-comunidad")
+        var empty = new PaginatedResult<CommunityProduct>
+        {
+            Data = new List<CommunityProduct>(),
+            TotalCount = 0,
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
+
         var community = await _communityService.GetByCommunityIdAsync(communityId);
-        
-        if (community == null || string.IsNullOrEmpty(community.Id))
-        {
-            return new PaginatedResult<CommunityProduct>
-            {
-                Data = new List<CommunityProduct>(),
-                TotalCount = 0,
-                PageNumber = pageNumber,
-                PageSize = pageSize
-            };
-        }
+        if (community == null || string.IsNullOrEmpty(community.Id)) return empty;
 
-        // PASO 2: Obtener las tiendas asociadas desde community_stores
-        var communityStoresFilter = Builders<CommunityStore>.Filter.And(
-            Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, community.Id),
-            Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)
-        );
+        var storeIds = await GetActiveStoreIdsAsync(community.Id);
+        if (!storeIds.Any()) return empty;
 
-        var communityStores = await _communityStoresCollection
-            .Find(communityStoresFilter)
-            .ToListAsync();
-
-        var storeIds = communityStores
-            .Select(cs => cs.StoreId)
-            .ToList();
-
-        if (!storeIds.Any())
-        {
-            return new PaginatedResult<CommunityProduct>
-            {
-                Data = new List<CommunityProduct>(),
-                TotalCount = 0,
-                PageNumber = pageNumber,
-                PageSize = pageSize
-            };
-        }
-
-        // PASO 3: Buscar productos en community_products de esas tiendas
         var filter = Builders<CommunityProduct>.Filter.And(
             Builders<CommunityProduct>.Filter.In(cp => cp.StoreId, storeIds),
             Builders<CommunityProduct>.Filter.Eq(cp => cp.Active, true)
         );
 
         var totalCount = await _communityProductsCollection.CountDocumentsAsync(filter);
-
         var data = await _communityProductsCollection
             .Find(filter)
             .SortByDescending(cp => cp.CreatedAt)
@@ -128,30 +107,12 @@ public class CommunityProductService : ICommunityProductService
 
     public async Task<List<CommunityProduct>> GetByCategoriaAsync(string communityId, string categoria)
     {
-        // PASO 1: Obtener la comunidad
         var community = await _communityService.GetByCommunityIdAsync(communityId);
-        
-        if (community == null || string.IsNullOrEmpty(community.Id))
-            return new List<CommunityProduct>();
+        if (community == null || string.IsNullOrEmpty(community.Id)) return new List<CommunityProduct>();
 
-        // PASO 2: Obtener las tiendas asociadas desde community_stores
-        var communityStoresFilter = Builders<CommunityStore>.Filter.And(
-            Builders<CommunityStore>.Filter.Eq(cs => cs.CommunityId, community.Id),
-            Builders<CommunityStore>.Filter.Eq(cs => cs.Status, true)
-        );
+        var storeIds = await GetActiveStoreIdsAsync(community.Id);
+        if (!storeIds.Any()) return new List<CommunityProduct>();
 
-        var communityStores = await _communityStoresCollection
-            .Find(communityStoresFilter)
-            .ToListAsync();
-
-        var storeIds = communityStores
-            .Select(cs => cs.StoreId)
-            .ToList();
-
-        if (!storeIds.Any())
-            return new List<CommunityProduct>();
-
-        // PASO 3: Filtrar por comunidad, tiendas, categoría y activos
         var filter = Builders<CommunityProduct>.Filter.And(
             Builders<CommunityProduct>.Filter.In(cp => cp.StoreId, storeIds),
             Builders<CommunityProduct>.Filter.Eq(cp => cp.Categoria, categoria),

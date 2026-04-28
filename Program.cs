@@ -1520,7 +1520,7 @@ app.MapPost("/community-requests", async (PublishStoreRequest request, ClaimsPri
 
 #region Community Products
 
-app.MapGet("/community-products/{communityId}", async (string communityId, ICommunityProductService service, int pageNumber = 1, int pageSize = 10) =>
+app.MapGet("/community-products/{communityId}", async (string communityId, ICommunityProductService service, int pageNumber = 1, int pageSize = 12) =>
 {
     var result = await service.GetByCommunityIdPaginatedAsync(communityId, pageNumber, pageSize);
     return Results.Ok(result);
@@ -1700,6 +1700,7 @@ app.MapGet("/admin/stores", async (ClaimsPrincipal user, IMongoDatabase db) =>
         isGlobal = s.IsGlobal,
         email = s.Email,
         phone = s.Phone,
+        description = s.Description,
         productCount = s.Id != null && countMap.TryGetValue(s.Id, out var c) ? c : 0,
         createdAt = s.CreatedAt,
     });

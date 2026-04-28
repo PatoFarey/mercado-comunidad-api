@@ -1,5 +1,6 @@
 using System.Globalization;
 using ApiMercadoComunidad.Models.DTOs;
+using QRCoder;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -11,6 +12,8 @@ public class CatalogPdfService : ICatalogPdfService
     private readonly IProductService _products;
     private readonly IStoreService _stores;
     private readonly IHttpClientFactory _http;
+
+    private const string FrontendBase = "https://feriacomunidad.cl";
 
     public CatalogPdfService(IProductService products, IStoreService stores, IHttpClientFactory http)
     {
@@ -51,6 +54,9 @@ public class CatalogPdfService : ICatalogPdfService
                 catch { }
             }));
 
+        var storeUrl = $"{FrontendBase}/store/{store.LinkStore}";
+        var qrBytes = GenerateQrPng(storeUrl);
+
         QuestPDF.Settings.License = LicenseType.Community;
 
         var document = Document.Create(container =>
@@ -62,7 +68,7 @@ public class CatalogPdfService : ICatalogPdfService
                 page.MarginVertical(40);
                 page.DefaultTextStyle(x => x.FontSize(10).FontColor("#111827"));
 
-                page.Header().Element(c => ComposeHeader(c, store, logoBytes));
+                page.Header().Element(c => ComposeHeader(c, store, logoBytes, qrBytes, storeUrl));
                 page.Content().Element(c => ComposeContent(c, products, productImages));
                 page.Footer().BorderTop(1).BorderColor("#E5E7EB").PaddingTop(8).Row(row =>
                 {
@@ -81,16 +87,26 @@ public class CatalogPdfService : ICatalogPdfService
         return document.GeneratePdf();
     }
 
-    private static void ComposeHeader(IContainer container, StoreResponse store, byte[]? logoBytes)
+    private static byte[] GenerateQrPng(string url)
     {
-        container.PaddingBottom(20).BorderBottom(2).BorderColor("#3B82F6").Row(row =>
+        using var qrGenerator = new QRCodeGenerator();
+        var qrData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.M);
+        var qrCode = new PngByteQRCode(qrData);
+        return qrCode.GetGraphic(5);
+    }
+
+    private static void ComposeHeader(IContainer container, StoreResponse store, byte[]? logoBytes, byte[] qrBytes, string storeUrl)
+    {
+        container.PaddingBottom(20).BorderBottom(1).BorderColor("#E5E7EB").Row(row =>
         {
+            // Logo
             if (logoBytes != null)
             {
                 row.ConstantItem(72).Height(72).Image(logoBytes).FitArea();
                 row.ConstantItem(16);
             }
 
+            // Store info
             row.RelativeItem().Column(col =>
             {
                 col.Item().Text(store.Name).Bold().FontSize(24).FontColor("#111827");
@@ -98,6 +114,14 @@ public class CatalogPdfService : ICatalogPdfService
                 col.Item().PaddingTop(4).Text(
                     DateTime.Now.ToString("MMMM yyyy", new CultureInfo("es-CL"))
                 ).FontSize(9).FontColor("#9CA3AF");
+            });
+
+            // QR code
+            row.ConstantItem(16);
+            row.ConstantItem(80).Column(col =>
+            {
+                col.Item().Height(80).Hyperlink(storeUrl).Image(qrBytes).FitArea();
+                col.Item().PaddingTop(3).AlignCenter().Text("Ver tienda").FontSize(7).FontColor("#9CA3AF");
             });
         });
     }
@@ -116,7 +140,7 @@ public class CatalogPdfService : ICatalogPdfService
 
             foreach (var product in products)
             {
-                // Category separator
+                // Category label
                 if (!string.IsNullOrWhiteSpace(product.Category) && product.Category != lastCategory)
                 {
                     lastCategory = product.Category;
@@ -126,10 +150,12 @@ public class CatalogPdfService : ICatalogPdfService
                         .Bold().FontSize(9).FontColor("#3B82F6");
                 }
 
+                var productUrl = $"{FrontendBase}/product/{product.Id}";
+
                 col.Item().BorderBottom(1).BorderColor("#F3F4F6").PaddingVertical(10).Row(row =>
                 {
-                    // Product image
-                    row.ConstantItem(90).Height(90).Element(c =>
+                    // Product image (clickable)
+                    row.ConstantItem(90).Height(90).Hyperlink(productUrl).Element(c =>
                     {
                         if (images.TryGetValue(product.Id, out var imgBytes))
                             c.Image(imgBytes).FitArea();
@@ -154,6 +180,9 @@ public class CatalogPdfService : ICatalogPdfService
                                 : product.Description;
                             textCol.Item().PaddingTop(6).Text(desc).FontColor("#6B7280").FontSize(10);
                         }
+
+                        textCol.Item().PaddingTop(8).Hyperlink(productUrl)
+                            .Text("Ver publicación →").FontColor("#3B82F6").FontSize(9);
                     });
                 });
             }
