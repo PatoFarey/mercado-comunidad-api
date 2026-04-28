@@ -289,6 +289,76 @@ app.MapGet("/og/html/product/{id}", async (string id, IOgImageService ogService,
     }
 });
 
+app.MapGet("/og/store/{slugOrId}", async (string slugOrId, IOgImageService ogService, HttpContext ctx) =>
+{
+    try
+    {
+        var png = await ogService.GenerateStoreOgImageAsync(slugOrId);
+        ctx.Response.Headers["Cache-Control"] = "public, max-age=3600";
+        return Results.Bytes(png, "image/png");
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch
+    {
+        return Results.StatusCode(500);
+    }
+});
+
+app.MapGet("/og/html/store/{slugOrId}", async (string slugOrId, IOgImageService ogService, IConfiguration config, HttpRequest req) =>
+{
+    try
+    {
+        var meta = await ogService.GetStoreMetaAsync(slugOrId);
+        var frontendUrl = config["FrontendUrl"]?.TrimEnd('/') ?? "https://feriacomunidad.cl";
+        var apiBase = $"{req.Scheme}://{req.Host}";
+        var storeUrl = $"{frontendUrl}/store/{slugOrId}";
+        var imageUrl = $"{apiBase}/og/store/{slugOrId}";
+
+        var title = System.Net.WebUtility.HtmlEncode(meta.Title);
+        var description = System.Net.WebUtility.HtmlEncode(meta.Description);
+
+        var html = $"""
+            <!DOCTYPE html>
+            <html lang="es">
+            <head>
+              <meta charset="UTF-8" />
+              <title>{title} · FeriaComunidad</title>
+              <meta property="og:type" content="website" />
+              <meta property="og:site_name" content="FeriaComunidad" />
+              <meta property="og:title" content="{title}" />
+              <meta property="og:description" content="{description}" />
+              <meta property="og:image" content="{imageUrl}" />
+              <meta property="og:image:width" content="1200" />
+              <meta property="og:image:height" content="630" />
+              <meta property="og:url" content="{storeUrl}" />
+              <meta name="twitter:card" content="summary_large_image" />
+              <meta name="twitter:title" content="{title}" />
+              <meta name="twitter:description" content="{description}" />
+              <meta name="twitter:image" content="{imageUrl}" />
+              <meta http-equiv="refresh" content="0;url={storeUrl}" />
+            </head>
+            <body>
+              <p><a href="{storeUrl}">{title}</a></p>
+              <script>window.location.replace('{storeUrl}');</script>
+            </body>
+            </html>
+            """;
+
+        return Results.Content(html, "text/html; charset=utf-8");
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch
+    {
+        return Results.StatusCode(500);
+    }
+});
+
 bool IsAuthenticated(ClaimsPrincipal user) => user.Identity?.IsAuthenticated == true;
 
 IResult UnauthorizedResult() => Results.Unauthorized();

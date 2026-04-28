@@ -177,6 +177,106 @@ public class OgImageService : IOgImageService
         return new ProductOgMeta(title, description);
     }
 
+    public async Task<byte[]> GenerateStoreOgImageAsync(string slugOrId)
+    {
+        var store = await ResolveStoreAsync(slugOrId);
+
+        Image<Rgba32>? logoImg = null;
+        if (!string.IsNullOrWhiteSpace(store.Logo))
+        {
+            try
+            {
+                var client = _http.CreateClient("og");
+                var bytes = await client.GetByteArrayAsync(store.Logo);
+                logoImg = Image.Load<Rgba32>(bytes);
+            }
+            catch { }
+        }
+
+        using var image = new Image<Rgba32>(W, H);
+
+        image.Mutate(ctx =>
+        {
+            ctx.Fill(BgColor);
+
+            if (logoImg != null)
+            {
+                logoImg.Mutate(p => p.Resize(new ResizeOptions
+                {
+                    Size = new Size(ImagePanelW, H),
+                    Mode = ResizeMode.Crop,
+                    Position = AnchorPositionMode.Center,
+                }));
+                ctx.DrawImage(logoImg, new Point(0, 0), 1f);
+
+                var fade = new LinearGradientBrush(
+                    new PointF(360, 0), new PointF(ImagePanelW, 0),
+                    GradientRepetitionMode.None,
+                    new ColorStop(0f, Color.Transparent),
+                    new ColorStop(1f, BgColor));
+                ctx.Fill(fade, new RectangleF(360, 0, ImagePanelW - 360, H));
+            }
+
+            ctx.Fill(AccentColor, new RectangleF(TextX - 12, 0, W - TextX + 12, 5));
+
+            var brandFont = _font.CreateFont(15, FontStyle.Regular);
+            var labelFont = _font.CreateFont(14, FontStyle.Regular);
+            var nameFont = _font.CreateFont(52, FontStyle.Bold);
+            var descFont = _font.CreateFont(21, FontStyle.Regular);
+
+            ctx.DrawText(new RichTextOptions(brandFont)
+            {
+                Origin = new PointF(TextX, 30),
+            }, "feriacomunidad.cl", MutedColor);
+
+            ctx.DrawText(new RichTextOptions(labelFont)
+            {
+                Origin = new PointF(TextX, 160),
+            }, "TIENDA", AccentColor);
+
+            ctx.DrawText(new RichTextOptions(nameFont)
+            {
+                Origin = new PointF(TextX, 190),
+                WrappingLength = TextMaxW,
+                WordBreaking = WordBreaking.Standard,
+                LineSpacing = 1.1f,
+            }, Truncate(store.Name, 60), TitleColor);
+
+            if (!string.IsNullOrWhiteSpace(store.Description))
+            {
+                ctx.DrawText(new RichTextOptions(descFont)
+                {
+                    Origin = new PointF(TextX, 390),
+                    WrappingLength = TextMaxW,
+                    WordBreaking = WordBreaking.Standard,
+                    LineSpacing = 1.3f,
+                }, Truncate(store.Description, 120), StoreColor);
+            }
+        });
+
+        logoImg?.Dispose();
+
+        using var ms = new MemoryStream();
+        await image.SaveAsPngAsync(ms);
+        return ms.ToArray();
+    }
+
+    public async Task<StoreOgMeta> GetStoreMetaAsync(string slugOrId)
+    {
+        var store = await ResolveStoreAsync(slugOrId);
+        var description = !string.IsNullOrWhiteSpace(store.Description)
+            ? Truncate(store.Description, 160)
+            : $"Explora los productos de {store.Name} en FeriaComunidad.";
+        return new StoreOgMeta(store.Name, description);
+    }
+
+    private async Task<ApiMercadoComunidad.Models.DTOs.StoreResponse> ResolveStoreAsync(string slugOrId)
+    {
+        var store = await _stores.GetByLinkStoreAsync(slugOrId)
+                 ?? await _stores.GetByIdAsync(slugOrId);
+        return store ?? throw new KeyNotFoundException($"Tienda '{slugOrId}' no encontrada.");
+    }
+
     private static string FormatPrice(decimal price)
     {
         var formatted = price.ToString("N0", new CultureInfo("es-CL"));
