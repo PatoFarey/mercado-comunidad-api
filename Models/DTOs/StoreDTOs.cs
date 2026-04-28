@@ -32,6 +32,13 @@ public class UpdateStoreRequest
     public string? Description { get; set; }
     public bool? IsGlobal { get; set; }
     public bool? Active { get; set; }
+    public StoreThemeRequest? Theme { get; set; }
+}
+
+public class StoreThemeRequest
+{
+    public string? Type { get; set; }  // "color" | "preset" | null (sin banner)
+    public string? Value { get; set; }
 }
 
 public class StoreResponse
@@ -51,6 +58,13 @@ public class StoreResponse
     public List<StoreUser> Users { get; set; } = new();
     public bool IsGlobal { get; set; }
     public bool Active { get; set; }
+    public StoreThemeResponse? Theme { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+}
+
+public class StoreThemeResponse
+{
+    public string Type { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
 }

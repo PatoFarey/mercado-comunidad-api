@@ -161,6 +161,14 @@ public class StoreService : IStoreService
         if (request.Active.HasValue)
             updateDefinition = updateDefinition.Set(s => s.Active, request.Active.Value);
 
+        if (request.Theme != null)
+        {
+            var theme = string.IsNullOrEmpty(request.Theme.Type)
+                ? null
+                : new StoreTheme { Type = request.Theme.Type, Value = request.Theme.Value ?? string.Empty };
+            updateDefinition = updateDefinition.Set(s => s.Theme, theme);
+        }
+
         var result = await _storesCollection.UpdateOneAsync(
             s => s.Id == id,
             updateDefinition
@@ -305,6 +313,7 @@ public class StoreService : IStoreService
             Users = store.Users,
             IsGlobal = store.IsGlobal,
             Active = store.Active,
+            Theme = store.Theme != null ? new StoreThemeResponse { Type = store.Theme.Type, Value = store.Theme.Value } : null,
             CreatedAt = store.CreatedAt,
             UpdatedAt = store.UpdatedAt
         };

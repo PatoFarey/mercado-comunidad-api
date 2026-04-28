@@ -1897,13 +1897,21 @@ app.MapPost("/stores", async (CreateStoreRequest request, ClaimsPrincipal user, 
     }
 }).RequireAuthorization();
 
-app.MapPut("/stores/{id}", async (string id, UpdateStoreRequest request, ClaimsPrincipal user, IStoreService service) =>
+app.MapPut("/stores/{id}", async (string id, UpdateStoreRequest request, ClaimsPrincipal user, IStoreService service, IPlanService planService) =>
 {
     if (!IsAuthenticated(user))
         return UnauthorizedResult();
 
     if (!await AuthorizationHelpers.CanManageStoreAsync(id, user, service))
         return Results.Forbid();
+
+    if (request.Theme != null && !string.IsNullOrEmpty(request.Theme.Type))
+    {
+        var currentUserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        var plan = await planService.GetEffectivePlanForUserAsync(currentUserId);
+        if (plan == null || !plan.Tier.Equals("pro", StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { message = "El diseño de banner requiere un plan Pro." });
+    }
 
     var store = await service.UpdateAsync(id, request);
     return store is not null ? Results.Ok(store) : Results.NotFound();

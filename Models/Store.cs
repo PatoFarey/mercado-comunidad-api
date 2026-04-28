@@ -59,11 +59,24 @@ public class Store
     [BsonElement("active")]
     public bool Active { get; set; } = true;
 
+    [BsonElement("theme")]
+    [BsonIgnoreIfNull]
+    public StoreTheme? Theme { get; set; }
+
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; }
 
     [BsonElement("updatedAt")]
     public DateTime UpdatedAt { get; set; }
+}
+
+public class StoreTheme
+{
+    [BsonElement("type")]
+    public string Type { get; set; } = string.Empty; // "color" | "preset"
+
+    [BsonElement("value")]
+    public string Value { get; set; } = string.Empty; // hex o preset key
 }
 
 public class StoreUser
