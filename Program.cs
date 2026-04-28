@@ -63,6 +63,7 @@ builder.Services.AddSingleton<ISalesService, SalesService>();
 builder.Services.AddSingleton<IMetricsService, MetricsService>();
 builder.Services.AddSingleton<IPlanService, PlanService>();
 builder.Services.AddSingleton<IOgImageService, OgImageService>();
+builder.Services.AddSingleton<ICatalogPdfService, CatalogPdfService>();
 builder.Services.AddSingleton<IUserSubscriptionService, UserSubscriptionService>();
 builder.Services.AddHttpClient<IPaykuService, PaykuService>(c =>
 {
@@ -2024,6 +2025,27 @@ app.MapDelete("/stores/{storeId}/users/{userId}", async (string storeId, string 
 
     var success = await service.RemoveUserFromStoreAsync(storeId, userId);
     return success ? Results.NoContent() : Results.NotFound();
+}).RequireAuthorization();
+
+app.MapGet("/stores/{storeId}/catalog-pdf", async (string storeId, ICatalogPdfService catalogService, ClaimsPrincipal user, HttpContext ctx) =>
+{
+    if (!IsAuthenticated(user)) return Results.Unauthorized();
+
+    try
+    {
+        var pdf = await catalogService.GenerateStoreCatalogAsync(storeId);
+        ctx.Response.Headers["Content-Disposition"] = $"attachment; filename=\"catalogo.pdf\"";
+        ctx.Response.Headers["Cache-Control"] = "no-store";
+        return Results.Bytes(pdf, "application/pdf");
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch
+    {
+        return Results.StatusCode(500);
+    }
 }).RequireAuthorization();
 
 #endregion
