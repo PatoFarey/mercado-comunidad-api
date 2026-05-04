@@ -291,8 +291,8 @@ public class BlobStorageService : IBlobStorageService
 
     private static async Task<(Stream processedStream, string contentType, string extension)> ProcessImageAsync(Stream input)
     {
-        const int MaxDimension = 1200;
-        const int WebpQuality = 82;
+        const int MaxDimension = 900;
+        const int WebpQuality = 75;
 
         using var image = await Image.LoadAsync(input);
 
